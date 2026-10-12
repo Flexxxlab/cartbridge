@@ -40,3 +40,10 @@ build/
 
 # Dart libraries do not commit lock files
 pubspec.lock
+
+# Flutter tooling (machine-specific)
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
