@@ -1,9 +1,17 @@
 # cart_bridge
 
-Turn a list of ingredients into a filled grocery cart. Send ingredient names and
-quantities to a [CartBridge](https://github.com/Flexxxlab/cartbridge) server and get
-back a store cart link, then open it in an in-app WebView or hand it to the store's app.
-Walmart is supported today.
+Turn a list of ingredients into a filled grocery cart, **without running a backend or
+putting a store's private key in your app**.
+
+Walmart's Affiliate API requires every request to be signed with an RSA private key. That
+key can't live safely inside a mobile app, so developers normally have to build and host a
+server just to hold it. CartBridge does that part for you: you save your Walmart
+credentials once in the CartBridge dashboard (stored encrypted, never shown again), and your
+app calls this package with a CartBridge API key. CartBridge signs the Walmart requests on
+your behalf and returns a cart link that you open in an in-app WebView or the store's app.
+
+Walmart is supported today. **More stores are planned.** Need a specific one? See
+[Stores and support](#stores-and-support).
 
 ## Features
 
@@ -19,7 +27,8 @@ Walmart is supported today.
 
 ## Requirements
 
-- A running CartBridge server and an API key. See the
+- A CartBridge account and API key, plus your own Walmart Affiliate API credentials saved in
+  the CartBridge dashboard. See the
   [server documentation](https://github.com/Flexxxlab/cartbridge#readme).
 - Flutter 3.24 or newer.
 - Android, iOS or macOS. (The WebView plugin does not support web, Windows or Linux.)
@@ -122,11 +131,16 @@ Navigator.push(context, MaterialPageRoute(
 | `cartQuantity` | Exact number of units to add (1–99), overriding the rule above |
 | `itemId` | Skip search and add this exact store item |
 
-## Security: keep your API key on a server
+## Security
 
-Anything bundled in an app can be extracted. If you ship this package in a public app,
-do not embed a real CartBridge key. Point `baseUrl` at your own backend, which holds the
-key and forwards the request, and pass the signed-in user's token as `apiKey`.
+**Your Walmart private key never touches your app.** It lives only on the CartBridge server,
+encrypted at rest, and is used to sign requests there.
+
+What your app does hold is a CartBridge API key. Treat it as a credential, but know its
+limits: it can only build carts, it is rate limited per account, and you can revoke it in
+the dashboard at any time. A leaked Walmart private key offers none of those protections.
+For apps with many anonymous users, you can instead point `baseUrl` at your own thin
+backend that holds the CartBridge key, and pass the signed-in user's token as `apiKey`.
 
 ## Known limitations
 
@@ -135,10 +149,15 @@ key and forwards the request, and pass the signed-in user's token as `apiKey`.
 - Whether **Open in app** lands in the Walmart app or the browser depends on the
   device's link handling.
 
-## Contributing and support
+## Stores and support
 
-Issues and pull requests are welcome in the
-[GitHub repository](https://github.com/Flexxxlab/cartbridge/issues).
+Walmart is supported today and we plan to add more stores. If your app needs a store that
+isn't supported yet, tell us which one and we'll prioritize it:
+
+- Email: [helpdesk@flexxxlab.com](mailto:helpdesk@flexxxlab.com)
+- Bugs and feature requests: [GitHub issues](https://github.com/Flexxxlab/cartbridge/issues)
+
+Pull requests are welcome.
 
 ## License
 

@@ -1,8 +1,12 @@
 # CartBridge
 
-Turn a list of ingredients into a filled grocery cart. Send ingredient names and
-quantities to one API call and get back a store cart link that adds everything at once.
-Walmart is supported today.
+Turn a list of ingredients into a filled grocery cart, **without running your own backend or
+putting a store's private key in your app**.
+
+Walmart's Affiliate API requires every request to be signed with an RSA private key, which
+can't be stored safely in a mobile app. CartBridge holds that key (encrypted) on the server,
+signs the requests for you, and returns a cart link. Walmart is supported today, and more
+stores are planned (see [Stores and support](#stores-and-support)).
 
 - **Server:** FastAPI app with a sign-up site, API keys and a `/v1/cart` endpoint.
 - **Flutter package:** [`cart_bridge`](flutter/cart_bridge) opens the cart in a WebView or the store's app.
@@ -147,6 +151,12 @@ flutter/cart_bridge/  Flutter package (published as `cart_bridge`)
 deploy/               Docker Compose + Caddy deployment files
 scripts/, .githooks/  Secret-scanning pre-commit hook
 ```
+
+## Stores and support
+
+Walmart is supported today. If you need another store, email [helpdesk@flexxxlab.com](mailto:helpdesk@flexxxlab.com)
+and tell us which one. Bugs and feature requests go to
+[GitHub issues](https://github.com/Flexxxlab/cartbridge/issues).
 
 ## Security
 
