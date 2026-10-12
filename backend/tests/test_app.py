@@ -94,6 +94,7 @@ def test_walmart_signature_verifies():
 
 def test_cart_rate_limits(client, api_key, monkeypatch):
     from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "own_key_limit_per_window", 2)
     h = {"Authorization": f"Bearer {api_key}"}
     body = {"items": [{"name": "milk"}]}
     assert client.post("/v1/cart", headers=h, json=body).status_code == 200
@@ -106,6 +107,7 @@ def test_cart_rate_limits(client, api_key, monkeypatch):
 def test_cart_daily_limit(client, api_key, monkeypatch):
     from datetime import timedelta
     from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "own_key_limit_per_day", 6)
     from app.db import SessionLocal
     from app.models import CartRequestLog, utcnow
     h = {"Authorization": f"Bearer {api_key}"}
@@ -116,3 +118,122 @@ def test_cart_daily_limit(client, api_key, monkeypatch):
     assert client.post("/v1/cart", headers=h, json={"items": [{"name": "milk"}]}).status_code == 200
     r = client.post("/v1/cart", headers=h, json={"items": [{"name": "milk"}]})
     assert r.status_code == 429 and "per day" in r.json()["detail"]
+
+
+# ---------- per-developer Walmart credentials ----------
+def _rsa_pem() -> str:
+    from cryptography.hazmat.primitives import serialization
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                             serialization.NoEncryption()).decode()
+
+
+def _save_creds(client, pem, consumer_id="dev-consumer-1", key_version="2"):
+    page = client.get("/dashboard").text
+    return client.post("/walmart", data=dict(consumer_id=consumer_id, key_version=key_version,
+                                             private_key=pem, publisher_id="", csrf=csrf(page)))
+
+
+def test_save_credentials_encrypted_and_never_shown(client, api_key):
+    pem = _rsa_pem()
+    r = _save_creds(client, pem)
+    assert r.status_code == 200 and "verified and saved" in r.text
+    assert "dev-consumer-1" in r.text
+    assert pem.splitlines()[1] not in r.text  # key body is never echoed back
+    from app.db import SessionLocal
+    from app.models import WalmartCredential
+    with SessionLocal() as db:
+        row = db.query(WalmartCredential).one()
+        assert "PRIVATE KEY" not in row.private_key_enc and row.key_version == "2"
+        from app.crypto import decrypt
+        assert decrypt(row.private_key_enc) == pem.strip()
+    h = {"X-API-Key": api_key}
+    assert client.get("/v1/me", headers=h).json()["walmart_credentials"] == "own"
+    client.post("/walmart/delete", data={"csrf": csrf(client.get("/dashboard").text)})
+    assert client.get("/v1/me", headers=h).json()["walmart_credentials"] == "missing"
+
+
+def test_bad_credentials_rejected(client, api_key):
+    assert "Could not read" in _save_creds(client, "-----" + "BEGIN PRIVATE KEY-----\nnope\n-----END PRIVATE KEY-----").text
+    assert "PEM private key" in _save_creds(client, "hello").text
+    assert "consumer ID" in _save_creds(client, _rsa_pem(), consumer_id="").text.replace("Consumer ID", "consumer ID")
+
+
+def test_cart_uses_own_credentials_and_blocks_without(client, api_key, monkeypatch):
+    from app import providers
+    from app.config import get_settings
+    from app.stores import WalmartMockProvider
+    monkeypatch.setattr(get_settings(), "walmart_provider", "affiliate")
+    h = {"X-API-Key": api_key}
+    body = {"items": [{"name": "milk"}]}
+
+    r = client.post("/v1/cart", headers=h, json=body)           # no credentials, not platform
+    assert r.status_code == 403 and "Walmart credentials" in r.json()["detail"]
+
+    used = {}
+
+    class Fake(WalmartMockProvider):
+        def __init__(self, s, **kw):
+            used.update(kw); super().__init__(s); self.closed = False
+        async def aclose(self): used["closed"] = True
+        async def verify(self): pass
+    monkeypatch.setattr(providers, "WalmartAffiliateProvider", Fake)
+    monkeypatch.setattr("app.web.WalmartAffiliateProvider", Fake)
+    assert _save_creds(client, _rsa_pem()).status_code == 200
+    assert used["consumer_id"] == "dev-consumer-1"               # verified before saving
+    used.clear()
+    assert client.post("/v1/cart", headers=h, json=body).status_code == 200
+    assert used["consumer_id"] == "dev-consumer-1" and used["key_version"] == "2" and used["closed"]
+    assert "BEGIN" in used["private_key_pem"]
+
+
+def test_platform_access_uses_server_credentials(client, api_key, monkeypatch):
+    from app import providers
+    from app.config import get_settings
+    from app.stores import WalmartMockProvider
+    monkeypatch.setattr(get_settings(), "walmart_provider", "affiliate")
+    monkeypatch.setattr(providers, "get_provider", lambda store: WalmartMockProvider(get_settings()))
+    h = {"X-API-Key": api_key}
+    from app.admin import main
+    assert main(["grant", "bob", "--limit", "120:5", "--limit", "3600:10", "--limit", "86400:20"]) == 0
+    assert main(["grant", "bob", "--limit", "nonsense"]) == 2
+    assert client.get("/v1/me", headers=h).json()["walmart_credentials"] == "platform"
+    assert client.post("/v1/cart", headers=h, json={"items": [{"name": "milk"}]}).status_code == 200
+    from app.db import SessionLocal
+    from app.ratelimit import limits_for
+    from app.models import User
+    with SessionLocal() as db:
+        assert limits_for(db, db.query(User).filter_by(username="bob").one()) == [(120, 5), (3600, 10), (86400, 20)]
+    assert main(["revoke", "bob"]) == 0
+    assert client.get("/v1/me", headers=h).json()["walmart_credentials"] == "missing"
+    assert main(["grant", "nobody"]) == 1
+
+
+def test_three_tier_limits_and_retry_after(client, api_key):
+    from datetime import timedelta
+    from app.admin import main
+    from app.db import SessionLocal
+    from app.models import CartRequestLog, utcnow
+    assert main(["grant", "bob", "--limit", "120:5", "--limit", "3600:10", "--limit", "86400:20"]) == 0
+    h = {"X-API-Key": api_key}
+    body = {"items": [{"name": "milk"}]}
+    with SessionLocal() as db:  # 9 requests 10 min ago: outside the 2-min tier, inside the hour tier
+        for _ in range(9):
+            db.add(CartRequestLog(user_id=1, created_at=utcnow() - timedelta(minutes=10)))
+        db.commit()
+    assert client.post("/v1/cart", headers=h, json=body).status_code == 200      # 10th this hour
+    r = client.post("/v1/cart", headers=h, json=body)                             # 11th: hour tier
+    assert r.status_code == 429 and "per hour" in r.json()["detail"]
+    assert 2400 < int(r.headers["Retry-After"]) <= 3000                           # oldest ages out in ~50 min
+
+
+def test_parse_and_describe_limits():
+    from app.ratelimit import describe_window, parse_limits
+    assert parse_limits("120:5,3600:10") == [(120, 5), (3600, 10)]
+    assert [describe_window(x) for x in (120, 3600, 86400, 300, 45)] == ["2 minutes", "hour", "day", "5 minutes", "45 seconds"]
+    for bad in ("x", "0:5", "100000:5", "60:-1"):
+        try:
+            parse_limits(bad)
+        except ValueError:
+            continue
+        raise AssertionError(bad)

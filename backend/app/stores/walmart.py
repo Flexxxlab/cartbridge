@@ -47,10 +47,25 @@ class WalmartAffiliateProvider(_WalmartCartMixin, StoreProvider):
     id = "walmart"
     name = "Walmart"
 
-    def __init__(self, s: Settings):
-        if not s.walmart_consumer_id:
+    def __init__(
+        self,
+        s: Settings,
+        *,
+        consumer_id: str | None = None,
+        key_version: str | None = None,
+        private_key_pem: str | None = None,
+        publisher_id: str | None = None,
+    ):
+        """No overrides: use the server's own credentials from settings. With overrides: a developer's own."""
+        own = consumer_id is not None
+        consumer_id = consumer_id if own else s.walmart_consumer_id
+        if not consumer_id:
             raise RuntimeError("WALMART_CONSUMER_ID is required for the affiliate provider")
-        if s.walmart_private_key:
+        if own:
+            if not private_key_pem:
+                raise RuntimeError("private key required")
+            pem = private_key_pem.replace("\\n", "\n").encode()
+        elif s.walmart_private_key:
             pem = s.walmart_private_key.replace("\\n", "\n").encode()
         elif s.walmart_private_key_path:
             with open(s.walmart_private_key_path, "rb") as f:
@@ -58,12 +73,23 @@ class WalmartAffiliateProvider(_WalmartCartMixin, StoreProvider):
         else:
             raise RuntimeError("WALMART_PRIVATE_KEY or WALMART_PRIVATE_KEY_PATH is required")
         self._key = serialization.load_pem_private_key(pem, password=None)
-        self.consumer_id = s.walmart_consumer_id
-        self.key_version = s.walmart_key_version
-        self.publisher_id = s.walmart_publisher_id
+        self.consumer_id = consumer_id
+        self.key_version = key_version if own else s.walmart_key_version
+        self.publisher_id = publisher_id if own else s.walmart_publisher_id
         self.api_base = s.walmart_api_base.rstrip("/")
         self.cart_base = s.walmart_cart_base
         self._client = httpx.AsyncClient(timeout=10)
+
+    async def verify(self) -> None:
+        """Raise StoreError unless Walmart accepts these credentials."""
+        try:
+            r = await self._client.get(f"{self.api_base}/taxonomy", headers=self._headers())
+        except httpx.HTTPError as e:
+            raise StoreError(f"Could not reach Walmart: {e}") from e
+        if r.status_code in (401, 403):
+            raise StoreError("Walmart rejected these credentials (check consumer ID, key version and private key).")
+        if r.status_code >= 400:
+            raise StoreError(f"Walmart returned HTTP {r.status_code}.")
 
     def _headers(self) -> dict[str, str]:
         ts = str(int(time.time() * 1000))

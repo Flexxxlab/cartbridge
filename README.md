@@ -32,6 +32,7 @@ uvicorn app.main:app --reload
 ```
 
 Open http://localhost:8000, sign up, create an API key. Tests: `cd tests && pytest -q`.
+Enable the secret-scan hook: `git config core.hooksPath .githooks`.
 
 ## Walmart keys
 
@@ -47,3 +48,7 @@ Set `WALMART_PROVIDER=affiliate`, `WALMART_CONSUMER_ID`, `WALMART_KEY_VERSION` a
 - `backend/`: FastAPI server and signup site
 - `flutter/cart_bridge/`: Flutter package
 - `deploy/`: Docker + Caddy files for production
+
+## License
+
+MIT. See `LICENSE`.

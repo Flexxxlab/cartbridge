@@ -62,3 +62,27 @@ class CartRequestLog(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow, index=True)
+
+
+class WalmartCredential(Base):
+    """A developer's own Walmart Affiliate API credentials. The private key is stored encrypted."""
+
+    __tablename__ = "walmart_credentials"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
+    consumer_id: Mapped[str] = mapped_column(String(100))
+    key_version: Mapped[str] = mapped_column(String(20), default="1")
+    publisher_id: Mapped[str | None] = mapped_column(String(50), default=None)
+    private_key_enc: Mapped[str] = mapped_column(String(8192))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class PlatformAccess(Base):
+    """Accounts allowed to use CartBridge's own Walmart credentials (granted by the operator only)."""
+
+    __tablename__ = "platform_access"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    # Cart-request limits as "seconds:count,..." e.g. "120:5,3600:10,86400:20". Empty = server defaults.
+    limits: Mapped[str | None] = mapped_column(String(200), default=None)

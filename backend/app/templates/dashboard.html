@@ -22,6 +22,30 @@
 <form method="post" action="/keys"><input type="hidden" name="csrf" value="{{ csrf }}">
 <label>New key name</label><input name="name" placeholder="e.g. iOS app" maxlength="60">
 <button>Create API key</button></form></div>
+<div class="card"><h2>Walmart credentials</h2>
+{% if walmart_source == 'platform' %}
+<p class="muted">This account uses CartBridge's own Walmart access.</p>
+{% else %}
+{% if walmart_saved %}<div class="notice">Walmart credentials verified and saved.</div>{% endif %}
+{% if walmart_error %}<ul class="errors"><li>{{ walmart_error }}</li></ul>{% endif %}
+{% if walmart_cred %}
+<p>Using your consumer ID <code>{{ walmart_cred.consumer_id }}</code> (key version {{ walmart_cred.key_version }}).
+Your private key is stored encrypted and is never shown again.</p>
+<form method="post" action="/walmart/delete"><input type="hidden" name="csrf" value="{{ csrf }}">
+<button class="danger" onclick="return confirm('Remove your Walmart credentials? Cart requests will stop working.')">Remove credentials</button></form>
+<p class="muted">To replace them, submit the form below.</p>
+{% else %}
+<div class="notice">Cart requests need your own Walmart credentials. Get them at
+<a href="https://walmart.io">walmart.io</a> (Affiliate API), then paste them here.</div>
+{% endif %}
+<form method="post" action="/walmart"><input type="hidden" name="csrf" value="{{ csrf }}">
+<label>Consumer ID</label><input name="consumer_id" autocomplete="off" required>
+<label>Key version</label><input name="key_version" value="1" inputmode="numeric" required>
+<label>Private key (PEM)</label>
+<textarea name="private_key" rows="6" autocomplete="off" spellcheck="false" placeholder="Paste your RSA private key (PEM)" required></textarea>
+<label>Publisher ID (optional)</label><input name="publisher_id" autocomplete="off">
+<button>Verify and save</button></form>
+{% endif %}</div>
 <div class="card"><h2>Quick start</h2>
 <pre>curl -X POST {{ base_url }}/v1/cart \
   -H "Authorization: Bearer YOUR_API_KEY" \

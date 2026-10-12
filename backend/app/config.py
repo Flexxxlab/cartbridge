@@ -25,10 +25,17 @@ class Settings(BaseSettings):
     email_token_ttl_hours: int = 24
     max_api_keys_per_user: int = 10
 
-    # /v1/cart limits per user (across all of their API keys)
+    # /v1/cart limits for accounts that use CartBridge's own Walmart access (e.g. a first-party app).
+    # Per user, across all of their API keys; per-account overrides via `python -m app.admin`.
     cart_limit_per_window: int = 2
     cart_window_seconds: int = 300
     cart_limit_per_day: int = 6
+    # Defaults for developers using their own Walmart credentials (Walmart enforces their own quota).
+    own_key_limit_per_window: int = 20
+    own_key_limit_per_day: int = 500
+
+    # Encrypts stored Walmart credentials. Falls back to a key derived from secret_key.
+    encryption_key: str | None = None
 
     # Walmart: "mock" (no credentials, fake products) or "affiliate" (walmart.io Affiliate API)
     walmart_provider: str = "mock"

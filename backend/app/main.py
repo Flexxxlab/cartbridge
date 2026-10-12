@@ -14,11 +14,21 @@ logging.basicConfig(level=logging.INFO)
 settings = get_settings()
 
 
+def _add_missing_columns() -> None:
+    """No Alembic yet: add columns introduced after a table was first created."""
+    from sqlalchemy import inspect, text
+    cols = {c["name"] for c in inspect(engine).get_columns("platform_access")}
+    if "limits" not in cols:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE platform_access ADD COLUMN limits VARCHAR(200)"))
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     if settings.secret_key == "dev-only-change-me" and settings.base_url.startswith("https"):
         raise RuntimeError("Set SECRET_KEY before running in production")
     Base.metadata.create_all(engine)
+    _add_missing_columns()
     yield
     await close_providers()
 

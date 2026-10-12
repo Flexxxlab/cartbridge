@@ -3,6 +3,8 @@ import re
 from datetime import timedelta
 from pathlib import Path
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -12,7 +14,11 @@ from sqlalchemy.orm import Session
 from .config import get_settings
 from .db import get_db
 from .emailer import send_email
-from .models import ApiKey, EmailToken, User, utcnow
+from .crypto import encrypt
+from .models import ApiKey, EmailToken, User, WalmartCredential, utcnow
+from .providers import walmart_source
+from .stores import WalmartAffiliateProvider
+from .stores.base import StoreError
 from .security import hash_password, new_api_key, new_csrf, new_token, sha256_hex, verify_password
 
 router = APIRouter(include_in_schema=False)
@@ -172,13 +178,17 @@ def logout(request: Request, csrf: str = Form("")):
 
 
 @router.get("/dashboard")
-def dashboard(request: Request, db: Session = Depends(get_db), new_key: str | None = None):
+def dashboard(request: Request, db: Session = Depends(get_db), new_key: str | None = None,
+              walmart_error: str | None = None, walmart_saved: bool = False):
     user = current_user(request, db)
     if not user:
         return RedirectResponse("/login", status_code=303)
     keys = db.scalars(select(ApiKey).where(ApiKey.user_id == user.id).order_by(ApiKey.created_at.desc())).all()
+    cred = db.scalar(select(WalmartCredential).where(WalmartCredential.user_id == user.id))
     return render(request, "dashboard.html", user=user, keys=keys, new_key=new_key,
-                  base_url=get_settings().base_url.rstrip("/"))
+                  base_url=get_settings().base_url.rstrip("/"),
+                  walmart_source=walmart_source(db, user), walmart_cred=cred,
+                  walmart_error=walmart_error, walmart_saved=walmart_saved)
 
 
 @router.post("/keys")
@@ -209,5 +219,74 @@ def revoke_key(request: Request, key_id: int, csrf: str = Form(""), db: Session 
     key = db.get(ApiKey, key_id)
     if key and key.user_id == user.id and not key.revoked_at:
         key.revoked_at = utcnow()
+        db.commit()
+    return RedirectResponse("/dashboard", status_code=303)
+
+
+def _parse_rsa_key(pem: str) -> str:
+    """Returns the normalized PEM, or raises ValueError with a user-facing message."""
+    pem = pem.strip().replace("\r\n", "\n")
+    if "BEGIN" not in pem:
+        raise ValueError("That doesn't look like a PEM private key (it should start with -----BEGIN).")
+    try:
+        key = serialization.load_pem_private_key(pem.encode(), password=None)
+    except (ValueError, TypeError):
+        raise ValueError("Could not read the private key. Use an unencrypted RSA key in PEM format.") from None
+    if not isinstance(key, rsa.RSAPrivateKey):
+        raise ValueError("The private key must be an RSA key.")
+    return pem
+
+
+@router.post("/walmart")
+async def save_walmart(
+    request: Request,
+    consumer_id: str = Form(""),
+    key_version: str = Form("1"),
+    publisher_id: str = Form(""),
+    private_key: str = Form(""),
+    csrf: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    check_csrf(request, csrf)
+    user = current_user(request, db)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if not user.is_verified:
+        raise HTTPException(403, "Verify your email first.")
+    consumer_id, key_version, publisher_id = consumer_id.strip(), key_version.strip() or "1", publisher_id.strip()
+    if not consumer_id or len(consumer_id) > 100 or not key_version.isdigit() or len(publisher_id) > 50:
+        return dashboard(request, db, walmart_error="Enter your consumer ID and a numeric key version.")
+    try:
+        pem = _parse_rsa_key(private_key)
+    except ValueError as e:
+        return dashboard(request, db, walmart_error=str(e))
+    if get_settings().walmart_provider == "affiliate":  # prove the credentials work before saving
+        provider = WalmartAffiliateProvider(get_settings(), consumer_id=consumer_id, key_version=key_version,
+                                            private_key_pem=pem, publisher_id=publisher_id or None)
+        try:
+            await provider.verify()
+        except StoreError as e:
+            return dashboard(request, db, walmart_error=str(e))
+        finally:
+            await provider.aclose()
+    cred = db.scalar(select(WalmartCredential).where(WalmartCredential.user_id == user.id))
+    if cred is None:
+        cred = WalmartCredential(user_id=user.id)
+        db.add(cred)
+    cred.consumer_id, cred.key_version, cred.publisher_id = consumer_id, key_version, publisher_id or None
+    cred.private_key_enc = encrypt(pem)
+    db.commit()
+    return dashboard(request, db, walmart_saved=True)
+
+
+@router.post("/walmart/delete")
+def delete_walmart(request: Request, csrf: str = Form(""), db: Session = Depends(get_db)):
+    check_csrf(request, csrf)
+    user = current_user(request, db)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    cred = db.scalar(select(WalmartCredential).where(WalmartCredential.user_id == user.id))
+    if cred:
+        db.delete(cred)
         db.commit()
     return RedirectResponse("/dashboard", status_code=303)

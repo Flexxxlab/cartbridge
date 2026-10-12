@@ -47,3 +47,4 @@ class MeResponse(BaseModel):
     username: str
     email: str
     email_verified: bool
+    walmart_credentials: str = "missing"  # platform | own | missing
