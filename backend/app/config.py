@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     own_key_limit_per_window: int = 20
     own_key_limit_per_day: int = 500
 
+    # Comma-separated usernames allowed to use /admin (edit limits, grant platform access).
+    admin_usernames: str = ""
+
     # Encrypts stored Walmart credentials. Falls back to a key derived from secret_key.
     encryption_key: str | None = None
 
@@ -46,6 +49,11 @@ class Settings(BaseSettings):
     walmart_publisher_id: str | None = None  # Impact Radius publisher id (affiliate tracking)
     walmart_api_base: str = "https://developer.api.walmart.com/api-proxy/service/affil/product/v2"
     walmart_cart_base: str = "https://affil.walmart.com/cart/addToCart"
+
+
+    @property
+    def admins(self) -> set[str]:
+        return {u.strip().lower() for u in self.admin_usernames.split(",") if u.strip()}
 
 
 @lru_cache

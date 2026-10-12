@@ -237,3 +237,45 @@ def test_parse_and_describe_limits():
         except ValueError:
             continue
         raise AssertionError(bad)
+
+
+def test_dashboard_shows_limits_and_usage(client, api_key, monkeypatch):
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "own_key_limit_per_window", 2)
+    h = {"X-API-Key": api_key}
+    client.post("/v1/cart", headers=h, json={"items": [{"name": "milk"}]})
+    page = client.get("/dashboard").text
+    assert "Rate limits" in page and "per 5 minutes" in page and "per day" in page
+    assert "/admin" not in page                       # not an admin
+    assert client.get("/admin").status_code == 404
+
+
+def test_admin_can_edit_limits_and_grant(client, api_key, monkeypatch):
+    from app.config import get_settings
+    from app.db import SessionLocal
+    from app.models import PlatformAccess
+    from app.ratelimit import limits_for
+    monkeypatch.setattr(get_settings(), "admin_usernames", "Bob")
+    assert "/admin" in client.get("/dashboard").text
+    page = client.get("/admin").text
+    assert "Accounts, limits" in page
+    post = lambda **kw: client.post("/admin/access", data=dict(csrf=csrf(client.get("/admin").text), user_id=1, **kw))
+    assert "Granted bob" in post(action="grant", limits="120:5, 3600:10, 86400:20").text
+    with SessionLocal() as db:
+        from app.models import User
+        assert limits_for(db, db.get(User, 1)) == [(120, 5), (3600, 10), (86400, 20)]
+    assert "must look like" in post(action="save", limits="nonsense").text
+    assert "Updated bob" in post(action="save", limits="").text        # empty -> server defaults
+    assert "Revoked" in post(action="revoke").text
+    with SessionLocal() as db:
+        assert db.get(PlatformAccess, 1) is None
+    bad = client.post("/admin/access", data=dict(csrf="x", user_id=1, action="grant"))
+    assert bad.status_code == 400                                       # CSRF enforced
+
+
+def test_admin_requires_allowlist(client, api_key, monkeypatch):
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "admin_usernames", "someone_else")
+    assert client.get("/admin").status_code == 404
+    assert client.post("/admin/access", data=dict(csrf=csrf(client.get("/dashboard").text),
+                                                  user_id=1, action="grant")).status_code == 404

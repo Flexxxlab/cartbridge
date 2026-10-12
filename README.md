@@ -11,6 +11,14 @@ stores are planned (see [Stores and support](#stores-and-support)).
 - **Server:** FastAPI app with a sign-up site, API keys and a `/v1/cart` endpoint.
 - **Flutter package:** [`cart_bridge`](flutter/cart_bridge) opens the cart in a WebView or the store's app.
 
+## Get started
+
+1. **Sign up** at [cartbridge.flexxxlab.com](https://cartbridge.flexxxlab.com/signup) and verify your email.
+2. Open your [dashboard](https://cartbridge.flexxxlab.com/dashboard) and add your **Walmart
+   Affiliate API credentials** (get them at [walmart.io](https://walmart.io)). They are verified
+   against Walmart, stored encrypted and never shown again.
+3. Create a **CartBridge API key** on the same page, and use it in your app.
+
 ## How it works
 
 1. Your app sends `POST /v1/cart` with ingredients and an API key.
@@ -20,23 +28,12 @@ stores are planned (see [Stores and support](#stores-and-support)).
 3. Opening the link (in a WebView, the browser or the Walmart app) fills the cart. The user
    signs in and checks out on the store's own site.
 
-## Quick start
+## Try it
 
-Run the server locally with fake products (no Walmart account needed):
-
-```sh
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt
-cp .env.example .env
-uvicorn app.main:app --reload
-```
-
-Open <http://localhost:8000>, sign up (with no SMTP configured, the verification link is printed
-to the console), and create an API key. Interactive API docs are at `/docs`. Then:
+With your API key from the [dashboard](https://cartbridge.flexxxlab.com/dashboard):
 
 ```sh
-curl -X POST http://localhost:8000/v1/cart \
+curl -X POST https://cartbridge.flexxxlab.com/v1/cart \
   -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"store":"walmart","items":[
@@ -44,7 +41,20 @@ curl -X POST http://localhost:8000/v1/cart \
         {"name":"large eggs","quantity":12,"unit":"each"}]}'
 ```
 
-Run the tests with `cd backend/tests && pytest -q`.
+The response contains a `cart_url`. Open it and the items are in the Walmart cart. Interactive
+API docs are at [/docs](https://cartbridge.flexxxlab.com/docs).
+
+## Rate limits
+
+Every account has limits on cart requests, applied across all of its API keys:
+
+| Account type | Default limits |
+| --- | --- |
+| Your own Walmart credentials | 20 per 5 minutes, 500 per day |
+| Operator-granted access to CartBridge's Walmart credentials | Custom, set per account |
+
+Your dashboard shows your limits and live usage. When a limit is hit the API returns `429`
+with a `Retry-After` header saying how many seconds to wait. Only `/v1/cart` is limited.
 
 ## API
 
@@ -105,6 +115,7 @@ Set these in `backend/.env` (see `.env.example`).
 | --- | --- |
 | `BASE_URL` | Public URL of the server (`https://...` enables secure cookies) |
 | `SECRET_KEY` | Signs session cookies. **Required in production.** |
+| `ADMIN_USERNAMES` | Comma-separated usernames allowed to open `/admin` (edit limits, grant platform access) |
 | `ENCRYPTION_KEY` | Encrypts stored Walmart credentials. Keep it safe: they cannot be decrypted without it. |
 | `DATABASE_URL` | SQLAlchemy URL (default: SQLite file) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Email for verification links. Empty `SMTP_HOST` prints emails to the console. |
@@ -116,18 +127,25 @@ Set these in `backend/.env` (see `.env.example`).
 Never commit `.env` or `.pem` files. `.gitignore` and a pre-commit hook guard against it;
 enable the hook with `git config core.hooksPath .githooks`.
 
-## Rate limits
+## Managing limits (operators)
 
-Limits apply per account across all its API keys, on `/v1/cart` only. Operator-granted
-accounts can have custom tiers, for example 5 per 2 minutes, 10 per hour and 20 per day:
+Usernames in `ADMIN_USERNAMES` get an **Admin** page at `/admin` to grant or revoke platform
+access and edit an account's limits. Tiers are `window-seconds:max-requests` pairs, for example
+5 per 2 minutes, 10 per hour and 20 per day:
+
+```
+120:5,3600:10,86400:20
+```
+
+The same is available from the command line:
 
 ```sh
 python -m app.admin grant <username> --limit 120:5 --limit 3600:10 --limit 86400:20
 ```
 
-## Deployment
+## Self-hosting
 
-`deploy/` contains a Docker Compose file and a Caddy config that serves the app over HTTPS
+The server is open source. `deploy/` contains a Docker Compose file and a Caddy config that serves the app over HTTPS
 with automatic certificates. Edit the hostname in `deploy/Caddyfile`, create `.env` and the
 Walmart key file on the server (see `deploy/docker-compose.prod.yml`), then:
 

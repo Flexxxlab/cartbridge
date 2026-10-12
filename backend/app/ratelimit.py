@@ -44,6 +44,20 @@ def limits_for(db: Session, user: User) -> list[Tier]:
     return [(s.cart_window_seconds, s.own_key_limit_per_window), (86400, s.own_key_limit_per_day)]
 
 
+def usage_for(db: Session, user: User) -> list[dict]:
+    """Per-tier usage for display: label, used, limit, and seconds until the oldest request frees a slot."""
+    now = utcnow()
+    out = []
+    for seconds, limit in limits_for(db, user):
+        rows = db.scalars(select(CartRequestLog.created_at).where(
+            CartRequestLog.user_id == user.id, CartRequestLog.created_at > now - timedelta(seconds=seconds)
+        ).order_by(CartRequestLog.created_at)).all()
+        resets = int((rows[0] + timedelta(seconds=seconds) - now).total_seconds()) + 1 if rows else 0
+        out.append({"label": f"per {describe_window(seconds)}",
+                    "used": len(rows), "limit": limit, "resets_in": max(0, resets)})
+    return out
+
+
 def enforce_cart_limits(user: User = Depends(require_api_key), db: Session = Depends(get_db)) -> User:
     now = utcnow()
     db.execute(delete(CartRequestLog).where(CartRequestLog.created_at <= now - timedelta(seconds=MAX_WINDOW)))

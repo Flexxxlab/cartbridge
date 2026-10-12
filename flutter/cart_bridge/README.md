@@ -13,6 +13,14 @@ your behalf and returns a cart link that you open in an in-app WebView or the st
 Walmart is supported today. **More stores are planned.** Need a specific one? See
 [Stores and support](#stores-and-support).
 
+## Get started
+
+1. **Sign up** at [cartbridge.flexxxlab.com](https://cartbridge.flexxxlab.com/signup) and verify your email.
+2. Open your [dashboard](https://cartbridge.flexxxlab.com/dashboard) and add your **Walmart
+   Affiliate API credentials** (get them at [walmart.io](https://walmart.io)). They are verified
+   against Walmart, stored encrypted and never shown again.
+3. Create a **CartBridge API key** on the same page, and use it in your app.
+
 ## Features
 
 - **One call to a filled cart.** `CartBridge.openCart` builds the cart on the server and
@@ -27,9 +35,8 @@ Walmart is supported today. **More stores are planned.** Need a specific one? Se
 
 ## Requirements
 
-- A CartBridge account and API key, plus your own Walmart Affiliate API credentials saved in
-  the CartBridge dashboard. See the
-  [server documentation](https://github.com/Flexxxlab/cartbridge#readme).
+- A free CartBridge account and API key from the [dashboard](https://cartbridge.flexxxlab.com/dashboard),
+  plus your own Walmart Affiliate API credentials saved there (see [Get started](#get-started)).
 - Flutter 3.24 or newer.
 - Android, iOS or macOS. (The WebView plugin does not support web, Windows or Linux.)
 
@@ -71,8 +78,8 @@ To let **Open in app** reach the Walmart app on Android 11+, declare the intent 
 import 'package:cart_bridge/cart_bridge.dart';
 
 final bridge = CartBridge(
-  apiKey: 'YOUR_KEY',
-  baseUrl: 'https://your-cartbridge-server.example.com',
+  apiKey: 'YOUR_KEY', // from https://cartbridge.flexxxlab.com/dashboard
+  baseUrl: 'https://cartbridge.flexxxlab.com',
 );
 
 final result = await bridge.openCart(
@@ -110,7 +117,10 @@ try {
 ### Building your own UI
 
 ```dart
-final client = CartBridgeClient(apiKey: 'YOUR_KEY', baseUrl: 'https://...');
+final client = CartBridgeClient(
+  apiKey: 'YOUR_KEY',
+  baseUrl: 'https://cartbridge.flexxxlab.com',
+);
 final result = await client.createCart(items: items);
 
 result.cartUrl;        // open this to add everything to the cart

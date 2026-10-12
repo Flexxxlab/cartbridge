@@ -15,8 +15,9 @@ from .config import get_settings
 from .db import get_db
 from .emailer import send_email
 from .crypto import encrypt
-from .models import ApiKey, EmailToken, User, WalmartCredential, utcnow
+from .models import ApiKey, EmailToken, PlatformAccess, User, WalmartCredential, utcnow
 from .providers import walmart_source
+from .ratelimit import describe_window, limits_for, parse_limits, usage_for
 from .stores import WalmartAffiliateProvider
 from .stores.base import StoreError
 from .security import hash_password, new_api_key, new_csrf, new_token, sha256_hex, verify_password
@@ -45,6 +46,10 @@ def check_csrf(request: Request, token: str) -> None:
 def render(request: Request, name: str, status_code: int = 200, **ctx) -> HTMLResponse:
     ctx.update(app_name=get_settings().app_name, csrf=csrf_token(request), user=ctx.get("user"))
     return templates.TemplateResponse(request, name, ctx, status_code=status_code)
+
+
+def is_admin(user: User | None) -> bool:
+    return bool(user and user.is_verified and user.username.lower() in get_settings().admins)
 
 
 def current_user(request: Request, db: Session) -> User | None:
@@ -188,6 +193,7 @@ def dashboard(request: Request, db: Session = Depends(get_db), new_key: str | No
     return render(request, "dashboard.html", user=user, keys=keys, new_key=new_key,
                   base_url=get_settings().base_url.rstrip("/"),
                   walmart_source=walmart_source(db, user), walmart_cred=cred,
+                  usage=usage_for(db, user), is_admin=is_admin(user),
                   walmart_error=walmart_error, walmart_saved=walmart_saved)
 
 
@@ -290,3 +296,65 @@ def delete_walmart(request: Request, csrf: str = Form(""), db: Session = Depends
         db.delete(cred)
         db.commit()
     return RedirectResponse("/dashboard", status_code=303)
+
+
+# ---------- operator admin ----------
+def _admin_or_none(request: Request, db: Session) -> User | None:
+    user = current_user(request, db)
+    return user if is_admin(user) else None
+
+
+def _admin_page(request: Request, db: Session, user: User, message: str | None = None, error: str | None = None):
+    rows = []
+    for u in db.scalars(select(User).order_by(User.created_at)).all():
+        plat = db.get(PlatformAccess, u.id)
+        src = walmart_source(db, u)
+        tiers = limits_for(db, u)
+        rows.append({
+            "user": u, "source": src, "platform": plat is not None,
+            "custom": plat.limits if plat and plat.limits else "",
+            "effective": ", ".join(f"{n} per {describe_window(sec)}" for sec, n in tiers),
+        })
+    return render(request, "admin.html", user=user, rows=rows, message=message, error=error)
+
+
+@router.get("/admin")
+def admin_home(request: Request, db: Session = Depends(get_db)):
+    user = _admin_or_none(request, db)
+    if not user:
+        raise HTTPException(404, "Not found")
+    return _admin_page(request, db, user)
+
+
+@router.post("/admin/access")
+def admin_access(request: Request, user_id: int = Form(...), action: str = Form(...), limits: str = Form(""),
+                 csrf: str = Form(""), db: Session = Depends(get_db)):
+    check_csrf(request, csrf)
+    admin = _admin_or_none(request, db)
+    if not admin:
+        raise HTTPException(404, "Not found")
+    target = db.get(User, user_id)
+    if not target:
+        return _admin_page(request, db, admin, error="No such user.")
+    limits = limits.strip().replace(" ", "")
+    if action in ("grant", "save") and limits:
+        try:
+            parse_limits(limits)
+        except (ValueError, TypeError):
+            return _admin_page(request, db, admin, error="Limits must look like 120:5,3600:10,86400:20 "
+                                                         "(window seconds:max requests, up to 1 day).")
+    row = db.get(PlatformAccess, target.id)
+    if action == "revoke":
+        if row:
+            db.delete(row)
+        msg = f"Revoked platform access from {target.username}."
+    elif action in ("grant", "save"):
+        if row is None:
+            row = PlatformAccess(user_id=target.id)
+            db.add(row)
+        row.limits = limits or None
+        msg = f"{'Granted' if action == 'grant' else 'Updated'} {target.username}."
+    else:
+        return _admin_page(request, db, admin, error="Unknown action.")
+    db.commit()
+    return _admin_page(request, db, admin, message=msg)

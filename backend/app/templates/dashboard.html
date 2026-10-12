@@ -46,6 +46,13 @@ Your private key is stored encrypted and is never shown again.</p>
 <label>Publisher ID (optional)</label><input name="publisher_id" autocomplete="off">
 <button>Verify and save</button></form>
 {% endif %}</div>
+<div class="card"><h2>Rate limits</h2>
+<p class="muted">Cart requests this account can make. Counts update as you use the API.</p>
+<table><tr><th>Window</th><th>Used</th><th>Limit</th><th>Next slot frees</th></tr>
+{% for u in usage %}<tr><td>{{ u.label }}</td><td>{{ u.used }}</td><td>{{ u.limit }}</td>
+<td>{% if u.used >= u.limit and u.resets_in %}in {{ u.resets_in // 60 }}m {{ u.resets_in % 60 }}s{% else %}<span class="muted">available</span>{% endif %}</td></tr>{% endfor %}</table>
+{% if is_admin %}<p><a href="/admin">Manage limits and platform access →</a></p>{% endif %}
+</div>
 <div class="card"><h2>Quick start</h2>
 <pre>curl -X POST {{ base_url }}/v1/cart \
   -H "Authorization: Bearer YOUR_API_KEY" \
