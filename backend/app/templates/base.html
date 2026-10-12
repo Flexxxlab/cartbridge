@@ -10,6 +10,9 @@
 header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--card)}
 header a{color:var(--fg);text-decoration:none;font-weight:600}
 main{max-width:720px;margin:32px auto;padding:0 16px}
+footer{max-width:720px;margin:0 auto;padding:8px 16px 36px;text-align:center;border-top:1px solid var(--line)}
+footer p{margin:6px 0}footer a{color:var(--accent);text-decoration:none}footer a:hover{text-decoration:underline}
+footer .sep{margin:0 6px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px;margin-bottom:20px}
 h1{font-size:22px;margin:0 0 16px}h2{font-size:17px;margin:0 0 12px}
 label{display:block;font-size:14px;color:var(--muted);margin:12px 0 4px}
@@ -35,5 +38,10 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:8px 6px;b
   {% endif %}
 </header>
 <main>{% block content %}{% endblock %}</main>
+<footer class="muted">
+  <p>Need help, or support for another store? <a href="mailto:{{ support_email }}">{{ support_email }}</a></p>
+  <p><a href="/docs">API docs</a><span class="sep">·</span><a href="{{ source_url }}" rel="noopener">GitHub</a><span class="sep">·</span><a href="{{ source_url }}/blob/main/SECURITY.md" rel="noopener">Security</a><span class="sep">·</span><a href="{{ source_url }}/blob/main/LICENSE" rel="noopener">MIT license</a></p>
+  <p>&copy; {{ year }} <a href="{{ company_url }}" rel="noopener">{{ company_name }}</a></p>
+</footer>
 </body>
 </html>

@@ -279,3 +279,14 @@ def test_admin_requires_allowlist(client, api_key, monkeypatch):
     assert client.get("/admin").status_code == 404
     assert client.post("/admin/access", data=dict(csrf=csrf(client.get("/dashboard").text),
                                                   user_id=1, action="grant")).status_code == 404
+
+
+def test_footer_on_every_page(client, make_user):
+    def check(html):
+        assert "mailto:helpdesk@flexxxlab.com" in html
+        assert 'href="https://us.flexxxlab.com/"' in html
+        assert "/docs" in html and "github.com/Flexxxlab/cartbridge" in html and "&copy;" in html
+    for path in ("/", "/signup", "/login"):
+        check(client.get(path).text)
+    make_user("carol")
+    check(client.get("/dashboard").text)

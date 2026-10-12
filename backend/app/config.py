@@ -7,6 +7,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_name: str = "CartBridge"
+    # Shown in the site footer on every page.
+    support_email: str = "helpdesk@flexxxlab.com"
+    company_name: str = "Flexxxlab"
+    company_url: str = "https://us.flexxxlab.com/"
+    source_url: str = "https://github.com/Flexxxlab/cartbridge"
     # Public URL of this server; used in verification email links.
     base_url: str = "http://localhost:8000"
     # Signs session cookies. MUST be overridden in production.

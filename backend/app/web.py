@@ -44,7 +44,10 @@ def check_csrf(request: Request, token: str) -> None:
 
 
 def render(request: Request, name: str, status_code: int = 200, **ctx) -> HTMLResponse:
-    ctx.update(app_name=get_settings().app_name, csrf=csrf_token(request), user=ctx.get("user"))
+    cfg = get_settings()
+    ctx.update(app_name=cfg.app_name, csrf=csrf_token(request), user=ctx.get("user"),
+               support_email=cfg.support_email, company_name=cfg.company_name, company_url=cfg.company_url,
+               source_url=cfg.source_url, year=utcnow().year)
     return templates.TemplateResponse(request, name, ctx, status_code=status_code)
 
 
