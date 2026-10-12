@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% block title %}Dashboard · {{ app_name }}{% endblock %}
+{% block content %}
+{% if not user.is_verified %}
+<div class="card"><div class="notice">Verify <b>{{ user.email }}</b> to create API keys. Check your inbox.</div>
+<form method="post" action="/verify/resend"><input type="hidden" name="csrf" value="{{ csrf }}">
+<button>Resend verification email</button></form></div>
+{% else %}
+{% if new_key %}
+<div class="card"><h2>Your new API key</h2>
+<p class="muted">Copy it now — it won't be shown again.</p><code class="key">{{ new_key }}</code></div>
+{% endif %}
+<div class="card"><h2>API keys</h2>
+{% if keys %}<table><tr><th>Name</th><th>Key</th><th>Created</th><th>Last used</th><th></th></tr>
+{% for k in keys %}<tr>
+<td>{{ k.name }}</td><td><code>{{ k.prefix }}…</code></td>
+<td>{{ k.created_at.strftime('%Y-%m-%d') }}</td>
+<td>{{ k.last_used_at.strftime('%Y-%m-%d') if k.last_used_at else '—' }}</td>
+<td>{% if k.revoked_at %}<span class="muted">revoked</span>{% else %}
+<form class="inline" method="post" action="/keys/{{ k.id }}/revoke"><input type="hidden" name="csrf" value="{{ csrf }}">
+<button class="danger" onclick="return confirm('Revoke this key? Apps using it will stop working.')">Revoke</button></form>{% endif %}</td>
+</tr>{% endfor %}</table>{% else %}<p class="muted">No keys yet.</p>{% endif %}
+<form method="post" action="/keys"><input type="hidden" name="csrf" value="{{ csrf }}">
+<label>New key name</label><input name="name" placeholder="e.g. iOS app" maxlength="60">
+<button>Create API key</button></form></div>
+<div class="card"><h2>Quick start</h2>
+<pre>curl -X POST {{ base_url }}/v1/cart \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"store":"walmart","items":[
+        {"name":"chicken breast","quantity":2,"unit":"lb"},
+        {"name":"large eggs","quantity":1,"unit":"each"}]}'</pre>
+<p class="muted">Full API docs: <a href="/docs">/docs</a></p></div>
+{% endif %}
+{% endblock %}

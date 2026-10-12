@@ -1,0 +1,39 @@
+# --- Secrets: never commit ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+*.jks
+*.keystore
+*_key_pair*
+WM_IO_*
+id_rsa*
+id_ed25519*
+service-account*.json
+*credentials*.json
+secrets/
+walmart_key*
+
+# --- Local data ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Internal notes / assistant context (keep private) ---
+CLAUDE.md
+.claude/
+docs/PRESSPOT_INTEGRATION.md
+
+# --- Build / tooling ---
+__pycache__/
+.pytest_cache/
+.venv/
+.dart_tool/
+build/
+.DS_Store
+.idea/
+.vscode/

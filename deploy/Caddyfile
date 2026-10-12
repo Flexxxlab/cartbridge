@@ -1,0 +1,4 @@
+cartbridge.flexxxlab.com {
+	encode gzip
+	reverse_proxy cartbridge:8000
+}
