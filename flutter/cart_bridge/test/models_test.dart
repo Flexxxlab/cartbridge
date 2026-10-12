@@ -3,8 +3,12 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('Ingredient serializes only set fields', () {
-    expect(const Ingredient('milk').toJson(), {'name': 'milk', 'quantity': 1.0});
-    expect(const Ingredient('eggs', quantity: 12, unit: 'each', cartQuantity: 1).toJson()['cart_quantity'], 1);
+    expect(
+        const Ingredient('milk').toJson(), {'name': 'milk', 'quantity': 1.0});
+    expect(
+        const Ingredient('eggs', quantity: 12, unit: 'each', cartQuantity: 1)
+            .toJson()['cart_quantity'],
+        1);
   });
 
   test('CartResult parses backend response', () {
@@ -20,7 +24,10 @@ void main() {
         }
       ],
       'unmatched': [
-        {'ingredient': {'name': 'saffron', 'quantity': 1}, 'reason': 'no available product found'}
+        {
+          'ingredient': {'name': 'saffron', 'quantity': 1},
+          'reason': 'no available product found'
+        }
       ],
       'estimated_total': 7.0,
     });

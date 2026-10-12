@@ -10,6 +10,7 @@ import 'models.dart';
 ///  * log in right here and check out, or
 ///  * tap "Open in app" to hand the cart over to the store's app / browser.
 class CartWebViewPage extends StatefulWidget {
+  /// Creates the page for the add-to-cart link [cartUrl].
   const CartWebViewPage({
     super.key,
     required this.cartUrl,
@@ -21,6 +22,8 @@ class CartWebViewPage extends StatefulWidget {
 
   /// From [CartResult.cartUrl].
   final String cartUrl;
+
+  /// The store the cart belongs to; used for labels and the refresh target.
   final CartStore store;
 
   /// Shown in a banner so the user knows what wasn't added.
@@ -28,6 +31,8 @@ class CartWebViewPage extends StatefulWidget {
 
   /// Override if the store blocks the default WebView user agent.
   final String? userAgent;
+
+  /// Overrides the app bar title.
   final String? title;
 
   @override
@@ -52,7 +57,9 @@ class _CartWebViewPageState extends State<CartWebViewPage> {
           onNavigationRequest: (req) {
             final uri = Uri.tryParse(req.url);
             if (uri == null) return NavigationDecision.prevent;
-            if (uri.scheme == 'http' || uri.scheme == 'https' || uri.scheme == 'about') {
+            if (uri.scheme == 'http' ||
+                uri.scheme == 'https' ||
+                uri.scheme == 'about') {
               return NavigationDecision.navigate;
             }
             // intent://, walmart://, tel:, mailto: ... -> hand to the OS.
@@ -69,10 +76,11 @@ class _CartWebViewPageState extends State<CartWebViewPage> {
     // Opening the add-to-cart link outside the WebView lets the store app (via
     // universal / app links) or the default browser add the same items to the
     // cart there. If the app isn't installed, it falls back to the browser.
-    final ok = await launchUrl(Uri.parse(widget.cartUrl), mode: LaunchMode.externalApplication);
+    final ok = await launchUrl(Uri.parse(widget.cartUrl),
+        mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Could not open ${widget.store.displayName}')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Could not open ${widget.store.displayName}')));
     }
   }
 
@@ -101,12 +109,20 @@ class _CartWebViewPageState extends State<CartWebViewPage> {
       child: Scaffold(
         appBar: AppBar(
           title: Text(widget.title ?? '$name cart'),
-          leading: IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop()),
-          actions: [IconButton(tooltip: 'Refresh cart', icon: const Icon(Icons.refresh), onPressed: _refresh)],
+          leading: IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () => Navigator.of(context).pop()),
+          actions: [
+            IconButton(
+                tooltip: 'Refresh cart',
+                icon: const Icon(Icons.refresh),
+                onPressed: _refresh)
+          ],
           bottom: _progress < 100
               ? PreferredSize(
                   preferredSize: const Size.fromHeight(2),
-                  child: LinearProgressIndicator(value: _progress / 100, minHeight: 2),
+                  child: LinearProgressIndicator(
+                      value: _progress / 100, minHeight: 2),
                 )
               : null,
         ),
@@ -119,7 +135,11 @@ class _CartWebViewPageState extends State<CartWebViewPage> {
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                 ),
-                actions: [TextButton(onPressed: () => setState(() => _showUnmatched = false), child: const Text('OK'))],
+                actions: [
+                  TextButton(
+                      onPressed: () => setState(() => _showUnmatched = false),
+                      child: const Text('OK'))
+                ],
               ),
             Expanded(child: WebViewWidget(controller: _controller)),
           ],

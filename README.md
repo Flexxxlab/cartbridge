@@ -1,54 +1,157 @@
 # CartBridge
 
-Send a list of ingredients, get back a store cart link. Walmart first.
+Turn a list of ingredients into a filled grocery cart. Send ingredient names and
+quantities to one API call and get back a store cart link that adds everything at once.
+Walmart is supported today.
 
-## Use it
+- **Server:** FastAPI app with a sign-up site, API keys and a `/v1/cart` endpoint.
+- **Flutter package:** [`cart_bridge`](flutter/cart_bridge) opens the cart in a WebView or the store's app.
 
-```bash
-curl -X POST https://your-server/v1/cart \
-  -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" \
-  -d '{"store":"walmart","items":[{"name":"chicken breast","quantity":2,"unit":"lb"},{"name":"eggs"}]}'
-```
+## How it works
 
-You get a `cart_url`. Open it and the items are in the Walmart cart.
+1. Your app sends `POST /v1/cart` with ingredients and an API key.
+2. The server searches the store, picks the first in-stock match for each ingredient, works
+   out a sensible quantity, and returns a cart link such as
+   `https://affil.walmart.com/cart/addToCart?items=ITEMID|QTY,ITEMID|QTY`.
+3. Opening the link (in a WebView, the browser or the Walmart app) fills the cart. The user
+   signs in and checks out on the store's own site.
 
-In Flutter:
+## Quick start
 
-```dart
-final bridge = CartBridge(apiKey: 'cb_...', baseUrl: 'https://your-server');
-await bridge.openCart(context, items: [Ingredient('chicken breast', quantity: 2, unit: 'lb')]);
-```
+Run the server locally with fake products (no Walmart account needed):
 
-Don't put a real API key in a published app. Call CartBridge from your own server instead.
-
-## Run it
-
-```bash
+```sh
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-cp .env.example .env     # leave WALMART_PROVIDER=mock to try it without Walmart keys
+cp .env.example .env
 uvicorn app.main:app --reload
 ```
 
-Open http://localhost:8000, sign up, create an API key. Tests: `cd tests && pytest -q`.
-Enable the secret-scan hook: `git config core.hooksPath .githooks`.
+Open <http://localhost:8000>, sign up (with no SMTP configured, the verification link is printed
+to the console), and create an API key. Interactive API docs are at `/docs`. Then:
 
-## Walmart keys
+```sh
+curl -X POST http://localhost:8000/v1/cart \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"store":"walmart","items":[
+        {"name":"chicken breast","quantity":2,"unit":"lb"},
+        {"name":"large eggs","quantity":12,"unit":"each"}]}'
+```
 
-Set `WALMART_PROVIDER=affiliate`, `WALMART_CONSUMER_ID`, `WALMART_KEY_VERSION` and
-`WALMART_PRIVATE_KEY_PATH` in `.env`. Never commit `.env` or `.pem` files.
+Run the tests with `cd backend/tests && pytest -q`.
 
-## Limits
+## API
 
-2 cart requests per 5 minutes and 6 per day per account (change in `.env`).
+Authenticate with `Authorization: Bearer cb_...` or `X-API-Key: cb_...`.
 
-## Layout
+| Endpoint | Description |
+| --- | --- |
+| `POST /v1/cart` | Build a cart from ingredients |
+| `GET /v1/me` | Account info, including which Walmart credentials the account uses |
+| `GET /v1/stores` | Supported stores |
 
-- `backend/`: FastAPI server and signup site
-- `flutter/cart_bridge/`: Flutter package
-- `deploy/`: Docker + Caddy files for production
+**Request** to `/v1/cart`:
+
+```json
+{
+  "store": "walmart",
+  "items": [
+    { "name": "chicken breast", "quantity": 2, "unit": "lb" },
+    { "name": "paper towels", "item_id": "123456", "cart_quantity": 3 }
+  ]
+}
+```
+
+**Response:** `cart_url`, `lines` (matched products and quantities), `unmatched`
+(ingredients that could not be added, with reasons) and `estimated_total`.
+
+**Quantity rules**
+
+- Count-like units (`each`, `can`, `bag`, none) add `ceil(quantity)` items.
+- Weight and volume units (`lb`, `oz`, `cup`, `g`) add one package, with a `note`.
+- `cart_quantity` sets an exact count; `item_id` skips the search.
+- The same product requested twice is merged (quantities summed, maximum 99).
+
+**Errors:** `401` invalid key, `403` no Walmart credentials on the account, `429` rate limit
+exceeded (see the `Retry-After` header), `400` invalid request.
+
+## Walmart credentials
+
+CartBridge calls the Walmart Affiliate API, and every request is signed with an RSA private
+key. There are two ways an account gets credentials:
+
+- **Bring your own.** Each developer enters their own consumer ID, key version and private
+  key in the dashboard. They are verified against Walmart before saving, stored encrypted,
+  and never shown again.
+- **Operator-granted.** The server operator can let specific accounts use the server's own
+  credentials: `python -m app.admin grant <username>`. See `python -m app.admin --help`.
+
+Accounts without either get a `403`. To get credentials, register at
+[walmart.io](https://walmart.io) and upload your public key.
+
+Check Walmart's current API terms before offering this service to others.
+
+## Configuration
+
+Set these in `backend/.env` (see `.env.example`).
+
+| Variable | Purpose |
+| --- | --- |
+| `BASE_URL` | Public URL of the server (`https://...` enables secure cookies) |
+| `SECRET_KEY` | Signs session cookies. **Required in production.** |
+| `ENCRYPTION_KEY` | Encrypts stored Walmart credentials. Keep it safe: they cannot be decrypted without it. |
+| `DATABASE_URL` | SQLAlchemy URL (default: SQLite file) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Email for verification links. Empty `SMTP_HOST` prints emails to the console. |
+| `WALMART_PROVIDER` | `mock` (fake products) or `affiliate` |
+| `WALMART_CONSUMER_ID`, `WALMART_KEY_VERSION`, `WALMART_PRIVATE_KEY_PATH` | The server's own Walmart credentials, for operator-granted accounts |
+| `CART_LIMIT_PER_WINDOW`, `CART_WINDOW_SECONDS`, `CART_LIMIT_PER_DAY` | Default limits for operator-granted accounts |
+| `OWN_KEY_LIMIT_PER_WINDOW`, `OWN_KEY_LIMIT_PER_DAY` | Default limits for accounts using their own credentials |
+
+Never commit `.env` or `.pem` files. `.gitignore` and a pre-commit hook guard against it;
+enable the hook with `git config core.hooksPath .githooks`.
+
+## Rate limits
+
+Limits apply per account across all its API keys, on `/v1/cart` only. Operator-granted
+accounts can have custom tiers, for example 5 per 2 minutes, 10 per hour and 20 per day:
+
+```sh
+python -m app.admin grant <username> --limit 120:5 --limit 3600:10 --limit 86400:20
+```
+
+## Deployment
+
+`deploy/` contains a Docker Compose file and a Caddy config that serves the app over HTTPS
+with automatic certificates. Edit the hostname in `deploy/Caddyfile`, create `.env` and the
+Walmart key file on the server (see `deploy/docker-compose.prod.yml`), then:
+
+```sh
+DEPLOY_HOST=my-server deploy/deploy.sh
+```
+
+Production checklist: strong `SECRET_KEY` and `ENCRYPTION_KEY`, a real SMTP provider, HTTPS,
+regular backups of the database volume, and Postgres if you expect real traffic.
+
+## Not yet included
+
+Password reset, Alembic migrations, per-IP limits on sign-up and login, and stores other
+than Walmart. Adding a store means implementing `StoreProvider` in `backend/app/stores/`.
+
+## Project layout
+
+```
+backend/              FastAPI server, templates, tests
+flutter/cart_bridge/  Flutter package (published as `cart_bridge`)
+deploy/               Docker Compose + Caddy deployment files
+scripts/, .githooks/  Secret-scanning pre-commit hook
+```
+
+## Security
+
+Please report vulnerabilities privately. See [SECURITY.md](SECURITY.md).
 
 ## License
 
-MIT. See `LICENSE`.
+MIT. See [LICENSE](LICENSE).

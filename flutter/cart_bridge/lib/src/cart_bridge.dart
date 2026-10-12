@@ -14,9 +14,17 @@ import 'models.dart';
 /// ]);
 /// ```
 class CartBridge {
-  CartBridge({required String apiKey, required String baseUrl, CartBridgeClient? client})
+  /// Creates a bridge that talks to the CartBridge server at [baseUrl].
+  ///
+  /// Pass [client] to supply a preconfigured [CartBridgeClient]; [apiKey] and
+  /// [baseUrl] are then not used.
+  CartBridge(
+      {required String apiKey,
+      required String baseUrl,
+      CartBridgeClient? client})
       : client = client ?? CartBridgeClient(apiKey: apiKey, baseUrl: baseUrl);
 
+  /// The underlying client, for calls that don't need the WebView page.
   final CartBridgeClient client;
 
   /// Returns the [CartResult] (or throws [CartBridgeException]).
