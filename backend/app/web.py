@@ -15,9 +15,10 @@ from .config import get_settings
 from .db import get_db
 from .emailer import send_email
 from .crypto import encrypt
-from .models import ApiKey, EmailToken, PlatformAccess, User, WalmartCredential, utcnow
+from .models import ApiKey, EmailToken, PlatformAccess, User, UserLimits, WalmartCredential, utcnow
 from .providers import walmart_source
-from .ratelimit import describe_window, limits_for, parse_limits, usage_for
+from .ratelimit import (MAX_COUNT, WINDOW_CHOICES, ceiling_for, chosen_for, default_chosen, describe_window,
+                        limits_for, parse_limits, usage_for)
 from .stores import WalmartAffiliateProvider
 from .stores.base import StoreError
 from .security import hash_password, new_api_key, new_csrf, new_token, sha256_hex, verify_password
@@ -187,7 +188,8 @@ def logout(request: Request, csrf: str = Form("")):
 
 @router.get("/dashboard")
 def dashboard(request: Request, db: Session = Depends(get_db), new_key: str | None = None,
-              walmart_error: str | None = None, walmart_saved: bool = False):
+              walmart_error: str | None = None, walmart_saved: bool = False,
+              limits_message: str | None = None, limits_error: str | None = None):
     user = current_user(request, db)
     if not user:
         return RedirectResponse("/login", status_code=303)
@@ -196,7 +198,8 @@ def dashboard(request: Request, db: Session = Depends(get_db), new_key: str | No
     return render(request, "dashboard.html", user=user, keys=keys, new_key=new_key,
                   base_url=get_settings().base_url.rstrip("/"),
                   walmart_source=walmart_source(db, user), walmart_cred=cred,
-                  usage=usage_for(db, user), is_admin=is_admin(user),
+                  usage=usage_for(db, user), is_admin=is_admin(user), **_limit_form(db, user),
+                  limits_message=limits_message, limits_error=limits_error,
                   walmart_error=walmart_error, walmart_saved=walmart_saved)
 
 
@@ -361,3 +364,60 @@ def admin_access(request: Request, user_id: int = Form(...), action: str = Form(
         return _admin_page(request, db, admin, error="Unknown action.")
     db.commit()
     return _admin_page(request, db, admin, message=msg)
+
+
+# ---------- self-service rate limits ----------
+LIMIT_ROWS = 3
+
+
+def _limit_form(db: Session, user: User) -> dict:
+    chosen = chosen_for(db, user)
+    current = chosen if chosen is not None else default_chosen(db, user)
+    rows = [{"count": n, "window": secs} for secs, n in current][:LIMIT_ROWS]
+    rows += [{"count": "", "window": 3600}] * (LIMIT_ROWS - len(rows))
+    return {
+        "limit_rows": rows,
+        "window_choices": WINDOW_CHOICES,
+        "limits_custom": chosen is not None,
+        "ceiling": ", ".join(f"{n} per {describe_window(secs)}" for secs, n in ceiling_for(db, user)),
+    }
+
+
+@router.post("/limits")
+async def save_limits(request: Request, db: Session = Depends(get_db)):
+    form = await request.form()
+    check_csrf(request, str(form.get("csrf", "")))
+    user = current_user(request, db)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    row = db.get(UserLimits, user.id)
+    if form.get("action") == "reset":
+        if row:
+            db.delete(row)
+            db.commit()
+        return dashboard(request, db, limits_message="Limits reset to the defaults.")
+
+    allowed = {secs for secs, _ in WINDOW_CHOICES}
+    tiers: dict[int, int] = {}
+    for i in range(LIMIT_ROWS):
+        count, window = str(form.get(f"count_{i}", "")).strip(), str(form.get(f"window_{i}", "")).strip()
+        if not count:
+            continue
+        if not count.isdigit() or not 1 <= int(count) <= MAX_COUNT or not window.isdigit() or int(window) not in allowed:
+            return dashboard(request, db, limits_error=f"Each limit needs a number from 1 to {MAX_COUNT:,} and a window.")
+        secs = int(window)
+        tiers[secs] = min(int(count), tiers.get(secs, int(count)))
+    if not tiers:
+        return dashboard(request, db, limits_error="Set at least one limit, or use Reset to go back to the defaults.")
+    text = ",".join(f"{secs}:{n}" for secs, n in sorted(tiers.items()))
+    if row is None:
+        db.add(UserLimits(user_id=user.id, limits=text))
+    else:
+        row.limits = text
+    db.commit()
+    capped = [f"{n} per {describe_window(secs)}" for secs, n in ceiling_for(db, user)
+              if secs in tiers and tiers[secs] > n]
+    msg = "Limits saved."
+    if capped:
+        msg += " Your account maximum still applies: " + ", ".join(capped) + "."
+    return dashboard(request, db, limits_message=msg)

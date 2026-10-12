@@ -290,3 +290,55 @@ def test_footer_on_every_page(client, make_user):
         check(client.get(path).text)
     make_user("carol")
     check(client.get("/dashboard").text)
+
+
+# ---------- self-service limits ----------
+def _set_limits(client, rows, action="save"):
+    data = {"csrf": csrf(client.get("/dashboard").text), "action": action}
+    for i, (count, window) in enumerate(rows):
+        data[f"count_{i}"], data[f"window_{i}"] = str(count), str(window)
+    return client.post("/limits", data=data)
+
+
+def test_user_sets_own_limits(client, api_key):
+    h = {"X-API-Key": api_key}
+    body = {"items": [{"name": "milk"}]}
+    page = client.get("/dashboard").text
+    assert "Set your limits" in page and "using the defaults" in page
+    assert "Limits saved" in _set_limits(client, [(1, 60)]).text
+    assert client.post("/v1/cart", headers=h, json=body).status_code == 200
+    r = client.post("/v1/cart", headers=h, json=body)
+    assert r.status_code == 429 and "1 requests per minute" in r.json()["detail"]
+    assert "using your own limits" in client.get("/dashboard").text
+    assert "reset to the defaults" in _set_limits(client, [], action="reset").text
+
+
+def test_user_limits_cannot_exceed_ceiling(client, api_key, monkeypatch):
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "own_key_max_per_window", 3)
+    r = _set_limits(client, [(1000, 300)])
+    assert "account maximum still applies: 3 per 5 minutes" in r.text
+    h = {"X-API-Key": api_key}
+    codes = [client.post("/v1/cart", headers=h, json={"items": [{"name": "milk"}]}).status_code for _ in range(4)]
+    assert codes == [200, 200, 200, 429]
+
+
+def test_granted_account_can_only_tighten(client, api_key):
+    from app.admin import main
+    from app.db import SessionLocal
+    from app.models import User
+    from app.ratelimit import limits_for
+    assert main(["grant", "bob", "--limit", "120:5", "--limit", "86400:20"]) == 0
+    _set_limits(client, [(50, 120)])
+    with SessionLocal() as db:
+        assert limits_for(db, db.get(User, 1)) == [(120, 5), (86400, 20)]
+    _set_limits(client, [(2, 120), (10, 3600)])
+    with SessionLocal() as db:
+        assert limits_for(db, db.get(User, 1)) == [(120, 2), (3600, 10), (86400, 20)]
+
+
+def test_limits_form_validation(client, api_key):
+    assert "a number from 1" in _set_limits(client, [("abc", 60)]).text
+    assert "a number from 1" in _set_limits(client, [(5, 7)]).text            # window not offered
+    assert "at least one limit" in _set_limits(client, [("", 60)]).text
+    assert client.post("/limits", data={"csrf": "bad", "action": "save"}).status_code == 400

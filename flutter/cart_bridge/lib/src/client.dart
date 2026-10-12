@@ -21,17 +21,29 @@ class CartBridgeException implements Exception {
   /// Whether the server rejected the API key (HTTP 401).
   bool get isUnauthorized => statusCode == 401;
 
+  /// Whether the account has no store credentials yet (HTTP 403). Add your
+  /// Walmart credentials in the CartBridge dashboard.
+  bool get isMissingStoreCredentials => statusCode == 403;
+
+  /// Whether a rate limit was hit (HTTP 429). [message] says how long to wait.
+  bool get isRateLimited => statusCode == 429;
+
   @override
   String toString() => 'CartBridgeException(${statusCode ?? '-'}): $message';
 }
 
-/// Thin HTTP client for the CartBridge backend.
+/// Thin HTTP client for the CartBridge service.
 class CartBridgeClient {
-  /// Creates a client for the CartBridge server at [baseUrl], authenticating
-  /// with [apiKey]. Pass [httpClient] to customize networking (e.g. in tests).
+  /// The hosted CartBridge service.
+  static const defaultBaseUrl = 'https://cartbridge.flexxxlab.com';
+
+  /// Creates a client authenticating with [apiKey] (from the CartBridge
+  /// dashboard). [baseUrl] defaults to the hosted service; override it only for
+  /// a self-hosted server or your own proxy. Pass [httpClient] to customize
+  /// networking (e.g. in tests).
   CartBridgeClient({
     required this.apiKey,
-    required this.baseUrl,
+    this.baseUrl = defaultBaseUrl,
     http.Client? httpClient,
     this.timeout = const Duration(seconds: 30),
   }) : _http = httpClient ?? http.Client();
@@ -39,7 +51,7 @@ class CartBridgeClient {
   /// The bearer token sent with every request.
   final String apiKey;
 
-  /// e.g. https://api.yourdomain.com
+  /// The CartBridge server, e.g. [defaultBaseUrl].
   final String baseUrl;
 
   /// How long to wait for the server before throwing a [CartBridgeException].

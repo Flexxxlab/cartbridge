@@ -86,3 +86,12 @@ class PlatformAccess(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     # Cart-request limits as "seconds:count,..." e.g. "120:5,3600:10,86400:20". Empty = server defaults.
     limits: Mapped[str | None] = mapped_column(String(200), default=None)
+
+
+class UserLimits(Base):
+    """Limits a user chose for their own account. Always enforced together with the account's ceiling."""
+
+    __tablename__ = "user_limits"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    limits: Mapped[str] = mapped_column(String(200))  # "seconds:count,..."

@@ -1,13 +1,10 @@
 import 'package:cart_bridge/cart_bridge.dart';
 import 'package:flutter/material.dart';
 
-// Pass at build time: flutter run --dart-define=CB_API_KEY=cb_... --dart-define=CB_BASE_URL=http://10.0.2.2:8000
+// Get an API key at https://cartbridge.flexxxlab.com/dashboard, then run:
+//   flutter run --dart-define=CB_API_KEY=YOUR_API_KEY
 /// CartBridge API key, supplied at build time.
 const apiKey = String.fromEnvironment('CB_API_KEY');
-
-/// CartBridge server URL, supplied at build time.
-const baseUrl =
-    String.fromEnvironment('CB_BASE_URL', defaultValue: 'http://10.0.2.2:8000');
 
 void main() => runApp(const MaterialApp(home: RecipePage()));
 
@@ -21,7 +18,7 @@ class RecipePage extends StatefulWidget {
 }
 
 class _RecipePageState extends State<RecipePage> {
-  final _bridge = CartBridge(apiKey: apiKey, baseUrl: baseUrl);
+  final _bridge = CartBridge(apiKey: apiKey);
   bool _loading = false;
 
   final _items = const [

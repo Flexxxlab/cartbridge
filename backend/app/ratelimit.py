@@ -7,10 +7,15 @@ from sqlalchemy.orm import Session
 from .api_auth import require_api_key
 from .config import get_settings
 from .db import get_db
-from .models import CartRequestLog, PlatformAccess, User, utcnow
+from .models import CartRequestLog, PlatformAccess, User, UserLimits, utcnow
 
 Tier = tuple[int, int]  # (window seconds, max requests)
 MAX_WINDOW = 86400  # log rows older than a day are pruned
+
+# Windows offered on the dashboard.
+WINDOW_CHOICES = [(60, "1 minute"), (120, "2 minutes"), (300, "5 minutes"), (900, "15 minutes"),
+                  (3600, "1 hour"), (86400, "1 day")]
+MAX_COUNT = 100_000
 
 
 def parse_limits(text: str) -> list[Tier]:
@@ -33,15 +38,38 @@ def describe_window(seconds: int) -> str:
     return f"{seconds} seconds"
 
 
-def limits_for(db: Session, user: User) -> list[Tier]:
-    """CartBridge's own Walmart access is metered tighter than a developer's own credentials."""
+def ceiling_for(db: Session, user: User) -> list[Tier]:
+    """The most an account may use. Operator-granted access to the server's Walmart credentials is set
+    per account; accounts with their own credentials get a generous server-wide ceiling."""
     s = get_settings()
     plat = db.get(PlatformAccess, user.id)
     if plat and plat.limits:
         return parse_limits(plat.limits)
     if plat:
         return [(s.cart_window_seconds, s.cart_limit_per_window), (86400, s.cart_limit_per_day)]
+    return [(s.cart_window_seconds, s.own_key_max_per_window), (86400, s.own_key_max_per_day)]
+
+
+def chosen_for(db: Session, user: User) -> list[Tier] | None:
+    """Limits the user set on their dashboard, or None if they haven't."""
+    row = db.get(UserLimits, user.id)
+    return parse_limits(row.limits) if row and row.limits else None
+
+
+def default_chosen(db: Session, user: User) -> list[Tier]:
+    s = get_settings()
+    if db.get(PlatformAccess, user.id):
+        return []  # the granted ceiling is the default
     return [(s.cart_window_seconds, s.own_key_limit_per_window), (86400, s.own_key_limit_per_day)]
+
+
+def limits_for(db: Session, user: User) -> list[Tier]:
+    """Enforced tiers: the user's own choice and the account ceiling, keeping the stricter per window."""
+    chosen = chosen_for(db, user)
+    merged: dict[int, int] = {}
+    for secs, n in ceiling_for(db, user) + (chosen if chosen is not None else default_chosen(db, user)):
+        merged[secs] = min(n, merged.get(secs, n))
+    return sorted(merged.items())
 
 
 def usage_for(db: Session, user: User) -> list[dict]:

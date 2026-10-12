@@ -1,174 +1,220 @@
 # cart_bridge
 
-Turn a list of ingredients into a filled grocery cart, **without running a backend or
-putting a store's private key in your app**.
+[![pub package](https://img.shields.io/pub/v/cart_bridge.svg)](https://pub.dev/packages/cart_bridge)
+[![pub points](https://img.shields.io/pub/points/cart_bridge)](https://pub.dev/packages/cart_bridge/score)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Walmart's Affiliate API requires every request to be signed with an RSA private key. That
-key can't live safely inside a mobile app, so developers normally have to build and host a
-server just to hold it. CartBridge does that part for you: you save your Walmart
-credentials once in the CartBridge dashboard (stored encrypted, never shown again), and your
-app calls this package with a CartBridge API key. CartBridge signs the Walmart requests on
-your behalf and returns a cart link that you open in an in-app WebView or the store's app.
+**Add "Send to Walmart cart" to your Flutter app in a few lines, with no backend to build.**
 
-Walmart is supported today. **More stores are planned.** Need a specific one? See
-[Stores and support](#stores-and-support).
+Give `cart_bridge` a list of ingredients. It finds matching products, fills a Walmart cart, and
+opens it in your app so the user can check out.
 
-## Get started
-
-1. **Sign up** at [cartbridge.flexxxlab.com](https://cartbridge.flexxxlab.com/signup) and verify your email.
-2. Open your [dashboard](https://cartbridge.flexxxlab.com/dashboard) and add your **Walmart
-   Affiliate API credentials** (get them at [walmart.io](https://walmart.io)). They are verified
-   against Walmart, stored encrypted and never shown again.
-3. Create a **CartBridge API key** on the same page, and use it in your app.
-
-## Features
-
-- **One call to a filled cart.** `CartBridge.openCart` builds the cart on the server and
-  opens it in a WebView.
-- **Sensible quantities.** Count-like units (`each`, `can`, none) add that many items;
-  weight and volume units (`lb`, `oz`, `cup`) add one package with an explanatory note.
-- **Transparent matching.** Every result lists what was matched, what could not be, and
-  an estimated total.
-- **Checkout in the store.** Users sign in inside the WebView, or tap **Open in app** to
-  continue in the Walmart app or browser.
-- **Low-level client** (`CartBridgeClient`) for building your own UI.
-
-## Requirements
-
-- A free CartBridge account and API key from the [dashboard](https://cartbridge.flexxxlab.com/dashboard),
-  plus your own Walmart Affiliate API credentials saved there (see [Get started](#get-started)).
-- Flutter 3.24 or newer.
-- Android, iOS or macOS. (The WebView plugin does not support web, Windows or Linux.)
-
-## Installation
-
-```yaml
-dependencies:
-  cart_bridge: ^0.1.0
+```dart
+await CartBridge(apiKey: 'YOUR_API_KEY').openCart(context, items: const [
+  Ingredient('chicken breast', quantity: 2, unit: 'lb'),
+  Ingredient('large eggs', quantity: 12, unit: 'each'),
+  Ingredient('olive oil'),
+]);
 ```
+
+## Why cart_bridge
+
+- **No server to build.** Walmart's API needs every request signed with a private key, which
+  can't be stored safely in a mobile app. Normally that means building and hosting a backend.
+  CartBridge does it for you.
+- **Your Walmart key stays off the device.** You add it once in the CartBridge dashboard, where
+  it is stored encrypted and never shown again. Your app only holds a CartBridge key, which can
+  only build carts, is rate limited, and can be revoked at any time.
+- **A complete cart flow.** Product matching, sensible quantities, a ready-made cart screen, and
+  a hand-off to the Walmart app.
+- **More stores are coming.** Walmart today; [tell us](#support) which store you need next.
+
+## Setup
+
+### 1. Create your free account
+
+Sign up at **[cartbridge.flexxxlab.com](https://cartbridge.flexxxlab.com/signup)** and confirm
+your email address.
+
+### 2. Connect your Walmart account
+
+CartBridge uses your own Walmart Affiliate API credentials:
+
+1. Register at [walmart.io](https://walmart.io) and request access to the Affiliate API.
+2. Create an RSA key pair:
+
+   ```sh
+   openssl genrsa -out walmart_private_key.pem 2048
+   openssl rsa -in walmart_private_key.pem -pubout -out walmart_public_key.pem
+   ```
+
+3. Upload `walmart_public_key.pem` on walmart.io, and note your **Consumer ID** and
+   **key version**.
+4. In your [CartBridge dashboard](https://cartbridge.flexxxlab.com/dashboard), paste the Consumer
+   ID, key version and the contents of `walmart_private_key.pem`. CartBridge checks them with
+   Walmart before saving.
+
+Keep `walmart_private_key.pem` out of your app and out of source control.
+
+### 3. Create an API key
+
+On the same [dashboard](https://cartbridge.flexxxlab.com/dashboard), create an API key and copy it.
+It is shown only once. The dashboard also shows your rate limits and current usage.
+
+### 4. Add the package
 
 ```sh
 flutter pub add cart_bridge
 ```
 
-### Platform setup
-
-**Android** — allow network access in `android/app/src/main/AndroidManifest.xml`:
-
-```xml
-<uses-permission android:name="android.permission.INTERNET"/>
-```
-
-To let **Open in app** reach the Walmart app on Android 11+, declare the intent you launch:
+**Android:** in `android/app/src/main/AndroidManifest.xml`, allow internet access and let the
+**Open in app** button launch links:
 
 ```xml
-<queries>
-  <intent>
-    <action android:name="android.intent.action.VIEW"/>
-    <data android:scheme="https"/>
-  </intent>
-</queries>
+<manifest ...>
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.VIEW"/>
+      <data android:scheme="https"/>
+    </intent>
+  </queries>
+  ...
+</manifest>
 ```
 
-**iOS / macOS** — nothing extra for HTTPS servers.
+**iOS and macOS:** no extra setup.
 
 ## Usage
+
+### Open a cart
 
 ```dart
 import 'package:cart_bridge/cart_bridge.dart';
 
-final bridge = CartBridge(
-  apiKey: 'YOUR_KEY', // from https://cartbridge.flexxxlab.com/dashboard
-  baseUrl: 'https://cartbridge.flexxxlab.com',
-);
+final bridge = CartBridge(apiKey: 'YOUR_API_KEY');
 
-final result = await bridge.openCart(
-  context,
-  items: const [
+Future<void> addToWalmart(BuildContext context) async {
+  final result = await bridge.openCart(context, items: const [
     Ingredient('chicken breast', quantity: 2, unit: 'lb'),
     Ingredient('large eggs', quantity: 12, unit: 'each'),
-    Ingredient('olive oil'),
-  ],
-);
+    Ingredient('basmati rice'),
+  ]);
 
-if (result.unmatched.isNotEmpty) {
-  // Ingredients that could not be matched; the WebView also shows a banner.
+  if (!result.hasItems) {
+    // Nothing matched, so no cart screen was opened.
+  }
 }
 ```
 
-`openCart` returns a `CartResult`. If nothing could be matched, no WebView is opened.
+`openCart` shows a full-screen Walmart cart. From there, your user can:
 
-### Handling errors
+- sign in and check out right in the app, or
+- tap **Open in app** to continue in the Walmart app or browser.
+
+Any ingredients that couldn't be matched are listed in a banner on the cart screen.
+
+### Handle errors
 
 ```dart
 try {
   await bridge.openCart(context, items: items);
 } on CartBridgeException catch (e) {
-  if (e.isUnauthorized) {
-    // Invalid API key.
-  } else if (e.statusCode == 429) {
-    // Rate limited: e.message says how long to wait.
+  if (e.isMissingStoreCredentials) {
+    // Add your Walmart credentials in the CartBridge dashboard.
+  } else if (e.isRateLimited) {
+    // Too many requests. e.message says how long to wait.
+  } else if (e.isUnauthorized) {
+    // The API key is wrong or was revoked.
   } else {
-    // Network error, timeout or server error: e.message has details.
+    // Network problem or timeout. e.message has details.
   }
 }
 ```
 
-### Building your own UI
+### Control quantities
+
+| You pass | What gets added |
+| --- | --- |
+| `Ingredient('eggs', quantity: 12, unit: 'each')` | 12 items (count units: `each`, `can`, `bag`, or none) |
+| `Ingredient('chicken', quantity: 2, unit: 'lb')` | 1 package, with a note (weight and volume units) |
+| `Ingredient('eggs', cartQuantity: 1)` | Exactly 1, whatever the quantity says |
+| `Ingredient('bread', itemId: '10315355')` | That exact Walmart item, skipping search |
+
+The same product requested twice is merged into one line.
+
+### Build your own screen
+
+Use `CartBridgeClient` when you want your own review screen before opening the cart:
 
 ```dart
-final client = CartBridgeClient(
-  apiKey: 'YOUR_KEY',
-  baseUrl: 'https://cartbridge.flexxxlab.com',
-);
+final client = CartBridgeClient(apiKey: 'YOUR_API_KEY');
 final result = await client.createCart(items: items);
 
-result.cartUrl;        // open this to add everything to the cart
-result.lines;          // matched products, quantities and notes
-result.unmatched;      // what could not be added, with reasons
-result.estimatedTotal; // if prices were available
+for (final line in result.lines) {
+  print('${line.cartQuantity} × ${line.product.name}  ${line.product.price ?? ''}');
+}
+print('Estimated total: ${result.estimatedTotal}');
 
-Navigator.push(context, MaterialPageRoute(
-  builder: (_) => CartWebViewPage(cartUrl: result.cartUrl!, unmatched: result.unmatched),
-));
+if (result.cartUrl != null) {
+  Navigator.of(context).push(MaterialPageRoute(
+    builder: (_) => CartWebViewPage(
+      cartUrl: result.cartUrl!,
+      unmatched: result.unmatched,
+    ),
+  ));
+}
 ```
 
-### Controlling quantities
+## Rate limits
 
-| Field | Effect |
-| --- | --- |
-| `quantity` + `unit` | Count-like units add that many; weight/volume units add one package |
-| `cartQuantity` | Exact number of units to add (1–99), overriding the rule above |
-| `itemId` | Skip search and add this exact store item |
+You choose your own limits. On your [dashboard](https://cartbridge.flexxxlab.com/dashboard),
+set rules such as *10 requests per minute* or *1,000 per day* to protect your Walmart quota from
+a runaway app, and watch live usage. Limits apply across all of your API keys.
 
-## Security
+New accounts start at **20 requests per 5 minutes and 500 per day**, and you can raise them up
+to **100 per 5 minutes and 5,000 per day**. When a limit is reached,
+`CartBridgeException.isRateLimited` is `true` and the message says how long to wait. Need more?
+[Contact us](#support).
 
-**Your Walmart private key never touches your app.** It lives only on the CartBridge server,
-encrypted at rest, and is used to sign requests there.
+## Keeping your API key safe
 
-What your app does hold is a CartBridge API key. Treat it as a credential, but know its
-limits: it can only build carts, it is rate limited per account, and you can revoke it in
-the dashboard at any time. A leaked Walmart private key offers none of those protections.
-For apps with many anonymous users, you can instead point `baseUrl` at your own thin
-backend that holds the CartBridge key, and pass the signed-in user's token as `apiKey`.
+Anything shipped inside an app can be extracted, so treat the CartBridge API key like any other
+credential. If it leaks, revoke it in the dashboard and create a new one; your Walmart key is
+not affected. For large public apps, you can route requests through your own backend instead:
+pass `baseUrl` pointing at your server and keep the CartBridge key there.
 
-## Known limitations
+## Platform support
 
-- Walmart may show bot checks inside WebViews. Pass `userAgent` to `CartWebViewPage` if
-  needed; **Open in app** is the fallback.
-- Whether **Open in app** lands in the Walmart app or the browser depends on the
-  device's link handling.
+| Android | iOS | macOS | Web | Windows | Linux |
+| :-: | :-: | :-: | :-: | :-: | :-: |
+| ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 
-## Stores and support
+The cart screen uses [`webview_flutter`](https://pub.dev/packages/webview_flutter), which
+supports Android, iOS and macOS.
 
-Walmart is supported today and we plan to add more stores. If your app needs a store that
-isn't supported yet, tell us which one and we'll prioritize it:
+## FAQ
 
-- Email: [helpdesk@flexxxlab.com](mailto:helpdesk@flexxxlab.com)
+**Do I need my own server?**
+No. CartBridge hosts the part that holds your Walmart key and talks to Walmart.
+
+**Where is my Walmart private key stored?**
+Only on CartBridge's server, encrypted. It is never sent to your app and can't be viewed again
+after you save it. You can remove it from the dashboard at any time.
+
+**Which stores are supported?**
+Walmart (US) today. More are planned, so [let us know](#support) which store your app needs.
+
+**What if Walmart shows a bot check in the cart screen?**
+Users can tap **Open in app** to continue in the Walmart app or browser. You can also pass a
+custom `userAgent` to `CartWebViewPage`.
+
+## Support
+
+- Email: [helpdesk@flexxxlab.com](mailto:helpdesk@flexxxlab.com), including requests for new stores
 - Bugs and feature requests: [GitHub issues](https://github.com/Flexxxlab/cartbridge/issues)
-
-Pull requests are welcome.
+- Account and API keys: [cartbridge.flexxxlab.com](https://cartbridge.flexxxlab.com/dashboard)
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). Made by [Flexxxlab](https://us.flexxxlab.com/).

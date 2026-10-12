@@ -7,20 +7,21 @@ import 'models.dart';
 /// One-call API: build the cart on the backend, then open it in a WebView.
 ///
 /// ```dart
-/// final bridge = CartBridge(apiKey: 'cb_...', baseUrl: 'https://api.example.com');
+/// final bridge = CartBridge(apiKey: 'YOUR_API_KEY');
 /// await bridge.openCart(context, items: [
 ///   Ingredient('chicken breast', quantity: 2, unit: 'lb'),
 ///   Ingredient('large eggs', quantity: 12, unit: 'each'),
 /// ]);
 /// ```
 class CartBridge {
-  /// Creates a bridge that talks to the CartBridge server at [baseUrl].
+  /// Creates a bridge authenticating with [apiKey] from the CartBridge
+  /// dashboard. [baseUrl] defaults to the hosted service.
   ///
   /// Pass [client] to supply a preconfigured [CartBridgeClient]; [apiKey] and
   /// [baseUrl] are then not used.
   CartBridge(
       {required String apiKey,
-      required String baseUrl,
+      String baseUrl = CartBridgeClient.defaultBaseUrl,
       CartBridgeClient? client})
       : client = client ?? CartBridgeClient(apiKey: apiKey, baseUrl: baseUrl);
 

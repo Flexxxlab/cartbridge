@@ -36,4 +36,14 @@ void main() {
     expect(r.lines.single.product.price, 3.5);
     expect(r.unmatched.single.ingredient.name, 'saffron');
   });
+
+  test('defaults to the hosted service and classifies errors', () {
+    expect(CartBridgeClient(apiKey: 'k').baseUrl,
+        'https://cartbridge.flexxxlab.com');
+    expect(CartBridgeException('x', statusCode: 403).isMissingStoreCredentials,
+        isTrue);
+    expect(CartBridgeException('x', statusCode: 429).isRateLimited, isTrue);
+    expect(CartBridgeException('x', statusCode: 401).isUnauthorized, isTrue);
+    expect(CartBridgeException('x').isRateLimited, isFalse);
+  });
 }

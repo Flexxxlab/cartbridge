@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     # Defaults for developers using their own Walmart credentials (Walmart enforces their own quota).
     own_key_limit_per_window: int = 20
     own_key_limit_per_day: int = 500
+    # Users can set their own limits on the dashboard, up to this ceiling (protects the server).
+    own_key_max_per_window: int = 100
+    own_key_max_per_day: int = 5000
 
     # Comma-separated usernames allowed to use /admin (edit limits, grant platform access).
     admin_usernames: str = ""

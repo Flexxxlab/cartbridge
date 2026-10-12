@@ -46,15 +46,16 @@ API docs are at [/docs](https://cartbridge.flexxxlab.com/docs).
 
 ## Rate limits
 
-Every account has limits on cart requests, applied across all of its API keys:
+Every user sets their own limits on the dashboard (for example *10 per minute* and *1,000 per
+day*) and sees live usage. Limits apply across all of an account's API keys, on `/v1/cart` only.
 
-| Account type | Default limits |
-| --- | --- |
-| Your own Walmart credentials | 20 per 5 minutes, 500 per day |
-| Operator-granted access to CartBridge's Walmart credentials | Custom, set per account |
+| Account type | Starts at | Can be raised to |
+| --- | --- | --- |
+| Your own Walmart credentials | 20 per 5 minutes, 500 per day | 100 per 5 minutes, 5,000 per day |
+| Operator-granted access to CartBridge's Walmart credentials | The granted limits | Only made stricter |
 
-Your dashboard shows your limits and live usage. When a limit is hit the API returns `429`
-with a `Retry-After` header saying how many seconds to wait. Only `/v1/cart` is limited.
+When a limit is hit the API returns `429` with a `Retry-After` header saying how many seconds
+to wait.
 
 ## API
 
@@ -122,15 +123,17 @@ Set these in `backend/.env` (see `.env.example`).
 | `WALMART_PROVIDER` | `mock` (fake products) or `affiliate` |
 | `WALMART_CONSUMER_ID`, `WALMART_KEY_VERSION`, `WALMART_PRIVATE_KEY_PATH` | The server's own Walmart credentials, for operator-granted accounts |
 | `CART_LIMIT_PER_WINDOW`, `CART_WINDOW_SECONDS`, `CART_LIMIT_PER_DAY` | Default limits for operator-granted accounts |
-| `OWN_KEY_LIMIT_PER_WINDOW`, `OWN_KEY_LIMIT_PER_DAY` | Default limits for accounts using their own credentials |
+| `OWN_KEY_LIMIT_PER_WINDOW`, `OWN_KEY_LIMIT_PER_DAY` | Starting limits for accounts using their own credentials |
+| `OWN_KEY_MAX_PER_WINDOW`, `OWN_KEY_MAX_PER_DAY` | The most those accounts can raise their own limits to |
 
 Never commit `.env` or `.pem` files. `.gitignore` and a pre-commit hook guard against it;
 enable the hook with `git config core.hooksPath .githooks`.
 
-## Managing limits (operators)
+## Granting platform access (operators)
 
-Usernames in `ADMIN_USERNAMES` get an **Admin** page at `/admin` to grant or revoke platform
-access and edit an account's limits. Tiers are `window-seconds:max-requests` pairs, for example
+Users manage their own limits. Operators decide which accounts may use the server's own Walmart
+credentials, and the maximum those accounts may use. Usernames in `ADMIN_USERNAMES` get an
+**Admin** page at `/admin` for this (optional; the command line below does the same). Tiers are `window-seconds:max-requests` pairs, for example
 5 per 2 minutes, 10 per hour and 20 per day:
 
 ```

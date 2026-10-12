@@ -47,11 +47,28 @@ Your private key is stored encrypted and is never shown again.</p>
 <button>Verify and save</button></form>
 {% endif %}</div>
 <div class="card"><h2>Rate limits</h2>
-<p class="muted">Cart requests this account can make. Counts update as you use the API.</p>
+<p class="muted">How many cart requests your apps can make, across all your API keys. Requests over a
+limit get HTTP 429 with a <code>Retry-After</code> header.</p>
+{% if limits_message %}<div class="notice">{{ limits_message }}</div>{% endif %}
+{% if limits_error %}<ul class="errors"><li>{{ limits_error }}</li></ul>{% endif %}
 <table><tr><th>Window</th><th>Used</th><th>Limit</th><th>Next slot frees</th></tr>
 {% for u in usage %}<tr><td>{{ u.label }}</td><td>{{ u.used }}</td><td>{{ u.limit }}</td>
 <td>{% if u.used >= u.limit and u.resets_in %}in {{ u.resets_in // 60 }}m {{ u.resets_in % 60 }}s{% else %}<span class="muted">available</span>{% endif %}</td></tr>{% endfor %}</table>
-{% if is_admin %}<p><a href="/admin">Manage limits and platform access →</a></p>{% endif %}
+
+<h3 style="font-size:15px;margin:20px 0 4px">Set your limits</h3>
+<p class="muted">{% if limits_custom %}You're using your own limits.{% else %}You're using the defaults.{% endif %}
+Your account maximum is {{ ceiling }}. Leave a row empty to skip it.</p>
+<form method="post" action="/limits"><input type="hidden" name="csrf" value="{{ csrf }}">
+{% for r in limit_rows %}{% set i = loop.index0 %}
+<div class="limit-row"><input name="count_{{ i }}" value="{{ r.count }}" inputmode="numeric" placeholder="e.g. 10" aria-label="Maximum requests, row {{ i + 1 }}">
+<span class="muted">requests per</span>
+<select name="window_{{ i }}" aria-label="Time window, row {{ i + 1 }}">{% for secs, label in window_choices %}
+<option value="{{ secs }}"{% if secs == r.window %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+{% endfor %}
+<button name="action" value="save">Save limits</button>
+{% if limits_custom %}<button class="danger" name="action" value="reset" style="margin-left:8px">Reset to defaults</button>{% endif %}
+</form>
+{% if is_admin %}<p><a href="/admin">Operator: manage platform access →</a></p>{% endif %}
 </div>
 <div class="card"><h2>Quick start</h2>
 <pre>curl -X POST {{ base_url }}/v1/cart \
