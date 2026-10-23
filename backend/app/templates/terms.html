@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card prose"><h1>Terms of Service</h1>
+<p class="muted">Last updated 23 October 2026. These terms cover the CartBridge website and API run by {{ company_name }} ("we").</p>
+
+<h2>1. The service</h2>
+<p>CartBridge turns a list of ingredients into a store cart link. It uses the Walmart Affiliate API with credentials that you
+provide. By creating an account or calling the API you agree to these terms and to the <a href="/privacy">Privacy Policy</a>.</p>
+
+<h2>2. Your account</h2>
+<p>You must give a real email address and keep your password and API keys secret. You are responsible for what is done with
+your keys. Revoke a key in the dashboard if it leaks. We may require email verification before you can create keys.</p>
+
+<h2>3. Your Walmart credentials</h2>
+<p>You must have the right to use the Walmart Affiliate API credentials you add, and you must follow Walmart's terms and
+quotas. You are responsible for your use of Walmart's service and any commissions, links or content that result. We store the
+private key encrypted and use it only to sign your requests.</p>
+
+<h2>4. Acceptable use</h2>
+<p>Do not abuse the service: no attempts to bypass limits, probe other accounts, overload the servers, or use CartBridge to break
+the law or another party's terms. We may suspend accounts that do.</p>
+
+<h2>5. Plans and limits</h2>
+<p>The Free plan has the limits shown on the <a href="/pricing">pricing page</a> and in your dashboard. Limits can change; we will
+try to give notice for reductions. Paid plans are arranged by email. There is no online checkout.</p>
+
+<h2>6. Not affiliated with Walmart</h2>
+<p>CartBridge is an independent service. Walmart and related marks belong to Walmart Inc. Product data, prices and availability
+come from Walmart and may be wrong or out of date. Check your cart on Walmart before you pay.</p>
+
+<h2>7. No warranty</h2>
+<p>The service is provided "as is" and "as available", without warranties of any kind. We do not promise it will be uninterrupted or
+error free.</p>
+
+<h2>8. Liability</h2>
+<p>To the extent the law allows, we are not liable for indirect or consequential losses, lost profits or data, and our total
+liability for any claim is limited to what you paid us in the 12 months before it (zero on the Free plan).</p>
+
+<h2>9. Ending</h2>
+<p>You can stop using CartBridge at any time and ask us to delete your account. We may suspend or end accounts that break these
+terms or put the service at risk.</p>
+
+<h2>10. Changes and contact</h2>
+<p>We may update these terms; the date above shows the latest version, and continued use means you accept it. Questions:
+<a href="{{ contact_url }}">{{ support_email }}</a>.</p>
+</div>
+{% endblock %}

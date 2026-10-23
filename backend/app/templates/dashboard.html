@@ -1,7 +1,8 @@
 {% extends "base.html" %}{% block title %}Dashboard · {{ app_name }}{% endblock %}
 {% block content %}
 {% if not user.is_verified %}
-<div class="card"><div class="notice">Verify <b>{{ user.email }}</b> to create API keys. Check your inbox.</div>
+<div class="card"><h1>Verify your email</h1>
+<div class="notice">Verify <b>{{ user.email }}</b> to create API keys. We sent you a link.<br>{{ verify_notice }}</div>
 <form method="post" action="/verify/resend"><input type="hidden" name="csrf" value="{{ csrf }}">
 <button>Resend verification email</button></form></div>
 {% else %}
@@ -9,6 +10,10 @@
 <div class="card"><h2>Your new API key</h2>
 <p class="muted">Copy it now — it won't be shown again.</p><code class="key">{{ new_key }}</code></div>
 {% endif %}
+<div class="card"><h2>Your plan: {{ plan_name }}</h2>
+{% if plan_name == 'Platform' %}<p class="muted">This account has limits granted by the operator.</p>
+{% else %}<p class="muted">Bring your own Walmart key. {{ plan_text }}</p>{% endif %}
+<a class="btn" href="{{ contact_url }}">{{ contact_to_buy }}</a></div>
 <div class="card"><h2>API keys</h2>
 {% if keys %}<table><tr><th>Name</th><th>Key</th><th>Created</th><th>Last used</th><th></th></tr>
 {% for k in keys %}<tr>
@@ -53,11 +58,12 @@ limit get HTTP 429 with a <code>Retry-After</code> header.</p>
 {% if limits_error %}<ul class="errors"><li>{{ limits_error }}</li></ul>{% endif %}
 <table><tr><th>Window</th><th>Used</th><th>Limit</th><th>Next slot frees</th></tr>
 {% for u in usage %}<tr><td>{{ u.label }}</td><td>{{ u.used }}</td><td>{{ u.limit }}</td>
-<td>{% if u.used >= u.limit and u.resets_in %}in {{ u.resets_in // 60 }}m {{ u.resets_in % 60 }}s{% else %}<span class="muted">available</span>{% endif %}</td></tr>{% endfor %}</table>
+<td>{% if u.used >= u.limit and u.resets_in %}in {{ u.resets_text }}{% else %}<span class="muted">available</span>{% endif %}</td></tr>{% endfor %}</table>
+{% for u in usage %}{% if u.message %}<div class="notice">{{ u.message }}</div>{% endif %}{% endfor %}
 
 <h3 style="font-size:15px;margin:20px 0 4px">Set your limits</h3>
 <p class="muted">{% if limits_custom %}You're using your own limits.{% else %}You're using the defaults.{% endif %}
-Your account maximum is {{ ceiling }}. Leave a row empty to skip it.</p>
+Your account maximum is {{ ceiling }}{% if monthly_cap %}, and {{ monthly_cap }} per calendar month{% endif %}. Leave a row empty to skip it.</p>
 <form method="post" action="/limits"><input type="hidden" name="csrf" value="{{ csrf }}">
 {% for r in limit_rows %}{% set i = loop.index0 %}
 <div class="limit-row"><input name="count_{{ i }}" value="{{ r.count }}" inputmode="numeric" placeholder="e.g. 10" aria-label="Maximum requests, row {{ i + 1 }}">

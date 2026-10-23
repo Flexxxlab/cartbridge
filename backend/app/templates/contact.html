@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card prose"><h1>Contact CartBridge</h1>
+<p>Email <a href="{{ contact_url }}">{{ support_email }}</a> for:</p>
+<ul><li><b>Account verification.</b> Verification emails can take longer than usual. For immediate access, email {{ support_email }}.</li>
+<li><b>Forgot password.</b> Email {{ support_email }}.</li>
+<li><b>More requests, or another store.</b> {{ contact_to_buy }}.</li>
+<li><b>Deleting your account and data.</b> Email from the address on the account.</li>
+<li><b>Security reports.</b> Use GitHub's private "Report a vulnerability" button, see
+<a href="{{ source_url }}/blob/main/SECURITY.md" rel="noopener">SECURITY.md</a>.</li></ul>
+<a class="btn" href="{{ contact_url }}">{{ contact_to_buy }}</a>
+<p class="muted">{{ company_name }} · <a href="{{ company_url }}" rel="noopener">{{ company_url }}</a> · Bugs and feature requests:
+<a href="{{ source_url }}/issues" rel="noopener">GitHub issues</a></p></div>
+{% endblock %}

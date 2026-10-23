@@ -4,11 +4,20 @@
 <p class="muted">"Platform" accounts use the server's own Walmart credentials. Limits are
 <code>window seconds:max requests</code> pairs, e.g. <code>120:5,3600:10,86400:20</code>
 (5 per 2 minutes, 10 per hour, 20 per day). Leave empty for the server defaults.</p>
+{% if pending %}<div class="notice"><b>{{ pending }}</b> account(s) waiting for verification. People email
+helpdesk when the email is slow: press <b>Verify</b> on their row.</div>{% endif %}
 {% if message %}<div class="notice">{{ message }}</div>{% endif %}
 {% if error %}<ul class="errors"><li>{{ error }}</li></ul>{% endif %}
-<table><tr><th>User</th><th>Walmart</th><th>Effective limits</th><th>Platform access</th></tr>
+<table><tr><th>User</th><th>Verified</th><th>Plan</th><th>Walmart</th><th>Effective limits</th><th>Platform access</th></tr>
 {% for r in rows %}<tr>
 <td>{{ r.user.username }}<br><span class="muted">{{ r.user.email }}</span></td>
+<td>{% if r.verified %}yes{% else %}<form class="inline" method="post" action="/admin/access">
+<input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="user_id" value="{{ r.user.id }}">
+<button name="action" value="verify" style="margin:0">Verify</button></form>{% endif %}</td>
+<td><form class="inline" method="post" action="/admin/access">
+<input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="user_id" value="{{ r.user.id }}">
+<select name="plan" style="width:auto" aria-label="Plan for {{ r.user.username }}">{% for p in plans %}<option value="{{ p }}"{% if p == r.plan %} selected{% endif %}>{{ p }}</option>{% endfor %}</select>
+<button name="action" value="plan" style="margin:0">Set</button></form></td>
 <td>{{ r.source }}</td>
 <td>{{ r.effective }}</td>
 <td><form method="post" action="/admin/access">

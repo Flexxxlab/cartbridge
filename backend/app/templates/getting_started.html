@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card prose"><h1>Getting started: Flutter Walmart add to cart</h1>
+<p>Four steps from nothing to a filled Walmart cart. You need a Walmart Affiliate API account.
+Questions? <a href="/faq">FAQ</a> or <a href="/contact">contact us</a>.</p>
+
+<h2>1. Create your account</h2>
+<p><a href="/signup">Sign up</a> with an email and password. Verification emails can take longer than usual; if yours does not
+arrive, email <a href="mailto:{{ support_email }}">{{ support_email }}</a> and we will activate your account.</p>
+
+<h2>2. Connect your Walmart account</h2>
+<p>Register at <a href="https://walmart.io" rel="noopener">walmart.io</a> and request Affiliate API access. Create a key pair
+and upload the public key:</p>
+<pre>openssl genrsa -out walmart_private_key.pem 2048
+openssl rsa -in walmart_private_key.pem -pubout -out walmart_public_key.pem</pre>
+<p>In your <a href="/dashboard">dashboard</a>, paste the Consumer ID, key version and private key. CartBridge checks them with Walmart
+before saving. Keep the private key out of your app and out of source control.</p>
+
+<h2>3. Create an API key</h2>
+<p>Create a CartBridge API key on the dashboard. It is shown once. It starts with <code>cb_</code>.</p>
+
+<h2>4a. Flutter</h2>
+<pre>flutter pub add cart_bridge</pre>
+<pre>import 'package:cart_bridge/cart_bridge.dart';
+
+await CartBridge(apiKey: 'YOUR_API_KEY').openCart(context, items: const [
+  Ingredient('chicken breast', quantity: 2, unit: 'lb'),
+  Ingredient('large eggs', quantity: 12, unit: 'each'),
+]);</pre>
+<p>On Android, allow internet access and the <code>https</code> VIEW intent query in <code>AndroidManifest.xml</code>. Details and error handling are in the
+<a href="https://pub.dev/packages/cart_bridge" rel="noopener">package readme</a>.</p>
+
+<h2>4b. REST</h2>
+<pre>curl -X POST {{ site_url }}/v1/cart \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"store":"walmart","items":[
+        {"name":"chicken breast","quantity":2,"unit":"lb"},
+        {"name":"large eggs","quantity":12,"unit":"each"}]}'</pre>
+<p>The response has <code>cart_url</code>, <code>lines</code>, <code>unmatched</code> and <code>estimated_total</code>. Open <code>cart_url</code> in a WebView, a browser or the
+Walmart app. Errors: <code>401</code> bad key, <code>403</code> no Walmart credentials, <code>400</code> bad request,
+<code>429</code> over your limit (see <code>Retry-After</code>). Full reference: <a href="/docs">/docs</a>.</p>
+
+<h2>Limits</h2>
+<p>Free plan: {{ free_text }} See <a href="/pricing">pricing</a>.</p>
+<div class="cta"><a class="btn" href="/signup">Get started</a><a class="btn secondary" href="/contact">Contact</a></div>
+</div>
+{% endblock %}

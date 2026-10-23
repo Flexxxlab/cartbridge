@@ -4,4 +4,5 @@
 <label>Username</label><input name="username" value="{{ username or '' }}" autocomplete="username" required>
 <label>Password</label><input name="password" type="password" autocomplete="current-password" required>
 <button>Log in</button></form>
+<p class="muted">{{ forgot_password }}</p>
 <p class="muted">New here? <a href="/signup">Create an account</a></p></div>{% endblock %}

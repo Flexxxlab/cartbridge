@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card prose"><h1>Features of the CartBridge Walmart cart API</h1>
+<p>CartBridge turns an ingredient list into a filled Walmart cart. It is built for apps with recipes, meal plans or
+shopping lists. <a href="/signup">Get started</a> or <a href="/contact">contact us</a>.</p>
+
+<h2>Ingredients in, Walmart cart link out</h2>
+<p>You send names, quantities and units. For each ingredient CartBridge searches Walmart, picks the first in-stock match,
+and builds the <code>affil.walmart.com/cart/addToCart</code> link. The response lists matched products with prices,
+the ingredients it could not match (with a reason) and an estimated total.</p>
+
+<h2>Sensible quantities</h2>
+<p>Count units (<code>each</code>, <code>can</code>, <code>bag</code> or none) add the rounded-up number of items. Weight and volume
+units (<code>lb</code>, <code>oz</code>, <code>cup</code>) add one package with a note. Duplicates merge into one line. You can override with
+<code>cart_quantity</code> or pin an exact product with <code>item_id</code>.</p>
+
+<h2>Flutter Walmart add to cart</h2>
+<p>The <a href="https://pub.dev/packages/cart_bridge" rel="noopener">cart_bridge</a> package on pub.dev gives you
+<code>CartBridge.openCart</code>, a full-screen cart view with an "Open in app" hand-off, and
+<code>CartBridgeClient</code> if you want your own review screen. It works on Android, iOS and macOS.</p>
+
+<h2>A REST API for everything else</h2>
+<p>Authenticate with <code>Authorization: Bearer cb_...</code> or <code>X-API-Key</code>. Endpoints: <code>POST /v1/cart</code>,
+<code>GET /v1/me</code>, <code>GET /v1/stores</code>. Interactive docs are at <a href="/docs">/docs</a>. More stores are planned;
+<a href="/contact">tell us which</a>.</p>
+
+<h2>Your Walmart key stays off the device</h2>
+<p>Walmart's Affiliate API needs each request signed with an RSA private key. You add yours once in the dashboard. It is
+verified against Walmart, stored encrypted and never shown again. Your app holds only a CartBridge key that can build carts,
+is rate limited and can be revoked at any time.</p>
+
+<h2>Limits you can see and control</h2>
+<p>The dashboard shows your plan, live usage and the next time a slot frees up. You can set tighter limits to protect your
+Walmart quota from a runaway app. The Free plan allows {{ free_text }}</p>
+
+<div class="cta"><a class="btn" href="/signup">Get started</a><a class="btn secondary" href="/pricing">Pricing</a><a href="/getting-started">Getting started</a></div>
+</div>
+{% endblock %}

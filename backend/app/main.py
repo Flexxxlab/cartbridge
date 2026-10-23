@@ -5,30 +5,21 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import api, web
+from . import api, pages, web
 from .config import get_settings
-from .db import Base, engine
+from .db import engine
+from .migrate import migrate
 from .stores import close_providers
 
 logging.basicConfig(level=logging.INFO)
 settings = get_settings()
 
 
-def _add_missing_columns() -> None:
-    """No Alembic yet: add columns introduced after a table was first created."""
-    from sqlalchemy import inspect, text
-    cols = {c["name"] for c in inspect(engine).get_columns("platform_access")}
-    if "limits" not in cols:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE platform_access ADD COLUMN limits VARCHAR(200)"))
-
-
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     if settings.secret_key == "dev-only-change-me" and settings.base_url.startswith("https"):
         raise RuntimeError("Set SECRET_KEY before running in production")
-    Base.metadata.create_all(engine)
-    _add_missing_columns()
+    migrate(engine)
     yield
     await close_providers()
 
@@ -47,6 +38,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET", "P
                    allow_headers=["Authorization", "X-API-Key", "Content-Type"])
 
 app.include_router(api.router)
+app.include_router(pages.router)
 app.include_router(web.router)
 
 

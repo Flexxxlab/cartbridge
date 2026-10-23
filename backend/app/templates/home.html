@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero card">
+<h1>Walmart cart API for your app</h1>
+<p>Send a list of ingredients. CartBridge finds the Walmart products, works out the quantities and gives you an
+add-to-cart link. Use the Flutter package or one REST call. No backend to build, and no Walmart private key inside your app.</p>
+<div class="cta"><a class="btn" href="/signup">Get started</a><a class="btn secondary" href="/contact">Contact</a>
+<a href="/getting-started">Read the docs</a></div>
+<p class="muted">Free plan: bring your own Walmart key. {{ free_text }}</p>
+</section>
+
+<div class="grid">
+<div class="card"><h2>Flutter Walmart add to cart</h2>
+<p>Add a "Send to Walmart cart" button with the <code>cart_bridge</code> package: one call opens a ready-made cart screen
+and hands off to the Walmart app. <a href="/getting-started">See the Flutter setup</a>.</p></div>
+<div class="card"><h2>Grocery cart link API</h2>
+<p><code>POST /v1/cart</code> returns a <code>cart_url</code> that fills a Walmart cart with every matched item.
+Open it in a WebView, a browser or the Walmart app. <a href="/features">See all features</a>.</p></div>
+<div class="card"><h2>Your Walmart key stays safe</h2>
+<p>Walmart signs every request with an RSA private key that cannot live in a mobile app. CartBridge stores yours encrypted
+on the server and signs requests for you.</p></div>
+</div>
+
+<div class="card"><h2>How it works</h2>
+<ol><li>Sign up and add your Walmart Affiliate API credentials in the dashboard.</li>
+<li>Create a CartBridge API key.</li>
+<li>Send ingredients with <code>name</code>, <code>quantity</code> and <code>unit</code>.</li>
+<li>Open the returned <code>cart_url</code>. The shopper signs in and checks out on Walmart.</li></ol>
+<p><a href="/signup" class="btn">Create a free account</a></p></div>
+{% endblock %}

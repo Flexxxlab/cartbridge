@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card prose"><h1>Pricing: free Walmart cart API plan</h1>
+<p>Start free. If you need more, email us.</p></div>
+<div class="grid">
+<div class="card"><h2>Free</h2>
+<p><b>$0</b></p>
+<ul><li>Bring your own Walmart key</li><li>{{ free.tiers[0][1] }} requests per 5 minutes</li><li>{{ free.monthly }} requests per calendar month</li>
+<li>Flutter package and REST API</li><li>Dashboard with live usage</li></ul>
+<a class="btn" href="/signup">Get started</a></div>
+<div class="card"><h2>Need more?</h2>
+<p>Higher limits, another store, or help with setup.</p>
+<a class="btn" href="{{ contact_url }}">{{ contact_to_buy }}</a>
+<p class="muted">Email <a href="{{ contact_url }}">{{ support_email }}</a>. We reply with the details.</p></div>
+</div>
+<div class="card prose"><p class="muted">The Free plan uses your own Walmart Affiliate API credentials, and Walmart's own quotas and terms apply to them.
+Over a limit, the API answers with HTTP 429 and says when to retry. See <a href="/faq">the FAQ</a> or <a href="/terms">the terms</a>.</p></div>
+{% endblock %}

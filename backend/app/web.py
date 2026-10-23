@@ -16,9 +16,12 @@ from .db import get_db
 from .emailer import send_email
 from .crypto import encrypt
 from .models import ApiKey, EmailToken, PlatformAccess, User, UserLimits, WalmartCredential, utcnow
+from .plans import PLANS, get_plan
 from .providers import walmart_source
 from .ratelimit import (MAX_COUNT, WINDOW_CHOICES, ceiling_for, chosen_for, default_chosen, describe_window,
-                        limits_for, parse_limits, usage_for)
+                        limits_for, monthly_limit_for, parse_limits, plan_name_for, usage_for, describe_plan)
+from .throttle import throttled
+from . import seo, ux
 from .stores import WalmartAffiliateProvider
 from .stores.base import StoreError
 from .security import hash_password, new_api_key, new_csrf, new_token, sha256_hex, verify_password
@@ -44,11 +47,20 @@ def check_csrf(request: Request, token: str) -> None:
         raise HTTPException(400, "Invalid form token. Reload the page and try again.")
 
 
-def render(request: Request, name: str, status_code: int = 200, **ctx) -> HTMLResponse:
+def render(request: Request, name: str, status_code: int = 200, indexable: bool = False,
+           description: str | None = None, page_title: str | None = None, **ctx) -> HTMLResponse:
+    """Render a template with the shared layout. Only pages passed indexable=True get canonical/OG/JSON-LD;
+    everything else (dashboard, forms, admin, messages) is noindex."""
     cfg = get_settings()
+    site = cfg.base_url.rstrip("/")
     ctx.update(app_name=cfg.app_name, csrf=csrf_token(request), user=ctx.get("user"),
                support_email=cfg.support_email, company_name=cfg.company_name, company_url=cfg.company_url,
-               source_url=cfg.source_url, year=utcnow().year)
+               source_url=cfg.source_url, year=utcnow().year, contact_url=ux.contact_url(),
+               contact_to_buy=ux.CONTACT_TO_BUY, verify_notice=ux.verify_notice(),
+               forgot_password=ux.forgot_password(), site_url=site, indexable=indexable,
+               description=description, page_title=page_title, default_description=seo.DEFAULT_DESCRIPTION,
+               canonical=site + request.url.path.rstrip("/") if indexable and request.url.path != "/" else site + "/",
+               jsonld=seo.jsonld() if indexable else "")
     return templates.TemplateResponse(request, name, ctx, status_code=status_code)
 
 
@@ -77,14 +89,11 @@ def send_verification(db: Session, user: User, background: BackgroundTasks) -> N
 
 
 # ---------- pages ----------
-@router.get("/")
-def home(request: Request, db: Session = Depends(get_db)):
-    return RedirectResponse("/dashboard" if current_user(request, db) else "/login", status_code=303)
-
-
 @router.get("/signup")
 def signup_form(request: Request):
-    return render(request, "signup.html")
+    return render(request, "signup.html", indexable=True, page_title="Sign up free · CartBridge",
+                  description="Create a free CartBridge account: bring your own Walmart key and add Walmart "
+                              "add-to-cart to your app with one API call.")
 
 
 @router.post("/signup")
@@ -98,6 +107,8 @@ def signup(
     csrf: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    if blocked := throttled(request, db, "signup", render):
+        return blocked
     check_csrf(request, csrf)
     username, email = username.strip(), email.strip().lower()
     errors = []
@@ -123,8 +134,9 @@ def signup(
     send_verification(db, user, background)
     request.session.clear()
     request.session["uid"] = user.id
-    return render(request, "message.html", title="Check your email",
-                  message=f"We sent a verification link to {email}. Click it to activate API keys.", user=user)
+    return render(request, "message.html", title="Check your email", user=user,
+                  message=f"We created your account for {email} and sent a verification link.",
+                  notice=ux.verify_notice())
 
 
 @router.get("/verify")
@@ -145,6 +157,8 @@ def verify(request: Request, token: str = "", db: Session = Depends(get_db)):
 
 @router.post("/verify/resend")
 def resend(request: Request, background: BackgroundTasks, csrf: str = Form(""), db: Session = Depends(get_db)):
+    if blocked := throttled(request, db, "resend", render):
+        return blocked
     check_csrf(request, csrf)
     user = current_user(request, db)
     if not user:
@@ -153,7 +167,7 @@ def resend(request: Request, background: BackgroundTasks, csrf: str = Form(""), 
         send_verification(db, user, background)
     return render(request, "message.html", title="Email sent",
                   message=f"A new verification link was sent to {user.email}.", user=user,
-                  link=("/dashboard", "Back to dashboard"))
+                  notice=ux.verify_notice(), link=("/dashboard", "Back to dashboard"))
 
 
 @router.get("/login")
@@ -169,6 +183,8 @@ def login(
     csrf: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    if blocked := throttled(request, db, "login", render):
+        return blocked
     check_csrf(request, csrf)
     user = db.scalar(select(User).where(func.lower(User.username) == username.strip().lower()))
     ok = verify_password(password, user.password_hash if user else _DUMMY_HASH)
@@ -198,7 +214,8 @@ def dashboard(request: Request, db: Session = Depends(get_db), new_key: str | No
     return render(request, "dashboard.html", user=user, keys=keys, new_key=new_key,
                   base_url=get_settings().base_url.rstrip("/"),
                   walmart_source=walmart_source(db, user), walmart_cred=cred,
-                  usage=usage_for(db, user), is_admin=is_admin(user), **_limit_form(db, user),
+                  usage=usage_for(db, user), plan_name=plan_name_for(db, user),
+                  plan_text=describe_plan(get_plan(user.plan)), monthly_cap=monthly_limit_for(db, user), is_admin=is_admin(user), **_limit_form(db, user),
                   limits_message=limits_message, limits_error=limits_error,
                   walmart_error=walmart_error, walmart_saved=walmart_saved)
 
@@ -317,11 +334,13 @@ def _admin_page(request: Request, db: Session, user: User, message: str | None =
         src = walmart_source(db, u)
         tiers = limits_for(db, u)
         rows.append({
-            "user": u, "source": src, "platform": plat is not None,
+            "user": u, "source": src, "platform": plat is not None, "verified": u.is_verified, "plan": u.plan,
             "custom": plat.limits if plat and plat.limits else "",
             "effective": ", ".join(f"{n} per {describe_window(sec)}" for sec, n in tiers),
         })
-    return render(request, "admin.html", user=user, rows=rows, message=message, error=error)
+    pending = sum(1 for r in rows if not r["verified"])
+    return render(request, "admin.html", user=user, rows=rows, message=message, error=error,
+                  pending=pending, plans=list(PLANS))
 
 
 @router.get("/admin")
@@ -334,7 +353,7 @@ def admin_home(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/admin/access")
 def admin_access(request: Request, user_id: int = Form(...), action: str = Form(...), limits: str = Form(""),
-                 csrf: str = Form(""), db: Session = Depends(get_db)):
+                 plan: str = Form(""), csrf: str = Form(""), db: Session = Depends(get_db)):
     check_csrf(request, csrf)
     admin = _admin_or_none(request, db)
     if not admin:
@@ -342,6 +361,17 @@ def admin_access(request: Request, user_id: int = Form(...), action: str = Form(
     target = db.get(User, user_id)
     if not target:
         return _admin_page(request, db, admin, error="No such user.")
+    if action == "verify":  # the manual step while email isn't sent
+        if not target.email_verified_at:
+            target.email_verified_at = utcnow()
+            db.commit()
+        return _admin_page(request, db, admin, message=f"Verified {target.username} ({target.email}).")
+    if action == "plan":
+        if plan not in PLANS:
+            return _admin_page(request, db, admin, error="Unknown plan.")
+        target.plan = plan
+        db.commit()
+        return _admin_page(request, db, admin, message=f"{target.username} is now on the {PLANS[plan].name} plan.")
     limits = limits.strip().replace(" ", "")
     if action in ("grant", "save") and limits:
         try:

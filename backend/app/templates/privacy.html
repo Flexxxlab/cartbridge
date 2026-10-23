@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card prose"><h1>Privacy Policy</h1>
+<p class="muted">Last updated 23 October 2026. {{ company_name }} runs CartBridge. This page says what we collect and why.</p>
+
+<h2>What we collect</h2>
+<ul><li><b>Account data:</b> username, email address and a salted hash of your password (we cannot read your password).</li>
+<li><b>API keys:</b> only a hash and a short prefix. The full key is shown to you once.</li>
+<li><b>Walmart credentials</b> you add: consumer ID, key version, optional publisher ID and your private key, stored encrypted.</li>
+<li><b>Usage records:</b> the time of each cart request and monthly counts per account, to enforce limits. We do not store the
+contents of your ingredient lists.</li>
+<li><b>Network data:</b> your IP address on sign-up, login and verification requests, kept up to 24 hours to prevent abuse. Our web
+server and host may keep ordinary access logs.</li>
+<li><b>Cookie:</b> one session cookie (<code>cb_session</code>) to keep you logged in. We use no advertising or analytics cookies.</li></ul>
+
+<h2>How we use it</h2>
+<p>To run your account, verify your email, authenticate API calls, enforce rate limits, keep the service secure and answer your
+messages. We do not sell your data.</p>
+
+<h2>Who else sees it</h2>
+<p>Your ingredient names, and your Walmart credentials, are sent to Walmart to search products and sign requests. Walmart's own
+privacy policy applies to that. Our hosting provider processes data on our behalf. We disclose data if the law requires it.</p>
+
+<h2>How long we keep it</h2>
+<p>Account data until you ask us to delete the account. Request timestamps for about a day, monthly counts while the account exists,
+network attempt records up to 24 hours.</p>
+
+<h2>Your choices</h2>
+<p>You can remove your Walmart credentials and revoke API keys in the dashboard at any time. To see, correct or delete your data,
+email <a href="{{ contact_url }}">{{ support_email }}</a> from the address on your account.</p>
+
+<h2>Security</h2>
+<p>Passwords are hashed with scrypt, API keys are stored as hashes, Walmart private keys are encrypted at rest, and forms are
+CSRF protected. No system is perfectly secure; report problems as described in <a href="{{ source_url }}/blob/main/SECURITY.md" rel="noopener">SECURITY.md</a>.</p>
+
+<h2>Changes</h2>
+<p>We will update the date above when this policy changes. Contact: <a href="{{ contact_url }}">{{ support_email }}</a>.</p>
+</div>
+{% endblock %}

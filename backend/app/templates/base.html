@@ -2,13 +2,28 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}{{ app_name }}{% endblock %}</title>
+<title>{% block title %}{{ page_title or app_name }}{% endblock %}</title>
+<meta name="description" content="{{ description or default_description }}">
+{% if indexable %}<link rel="canonical" href="{{ canonical }}">
+<meta property="og:type" content="website"><meta property="og:site_name" content="{{ app_name }}">
+<meta property="og:title" content="{{ page_title or app_name }}"><meta property="og:description" content="{{ description or default_description }}">
+<meta property="og:url" content="{{ canonical }}">
+<meta name="twitter:card" content="summary"><meta name="twitter:title" content="{{ page_title or app_name }}">
+<meta name="twitter:description" content="{{ description or default_description }}">
+<script type="application/ld+json">{{ jsonld|safe }}</script>
+{% else %}<meta name="robots" content="noindex">{% endif %}
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
 :root{--bg:#f6f7f9;--card:#fff;--fg:#1d2330;--muted:#667085;--line:#e4e7ec;--accent:#0b63ce;--err:#b42318;--ok:#067647}
 @media (prefers-color-scheme:dark){:root{--bg:#0f1218;--card:#171b23;--fg:#e6e8ec;--muted:#98a2b3;--line:#2a303b;--accent:#5aa2ff;--err:#f97066;--ok:#47cd89}}
 *{box-sizing:border-box}body{margin:0;font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--fg)}
 header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--card)}
 header a{color:var(--fg);text-decoration:none;font-weight:600}
+header nav{display:flex;gap:16px;align-items:center;flex-wrap:wrap}header nav a{font-weight:500;font-size:15px}
+.hero h1{font-size:30px;line-height:1.2}.hero p{font-size:18px}.cta{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.btn.secondary{background:none;color:var(--accent);border:1px solid var(--accent)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}.grid .card{margin:0}
+.prose h2{margin-top:24px}.prose p,.prose li{max-width:65ch}
 main{max-width:720px;margin:32px auto;padding:0 16px}
 footer{max-width:720px;margin:0 auto;padding:8px 16px 36px;text-align:center;border-top:1px solid var(--line)}
 footer p{margin:6px 0}footer a{color:var(--accent);text-decoration:none}footer a:hover{text-decoration:underline}
@@ -33,15 +48,19 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:8px 6px;b
 <body>
 <header>
   <a href="/">{{ app_name }}</a>
-  {% if user %}
-  <form class="inline" method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}">
-    <span class="muted">{{ user.username }}</span> · <button class="link">Log out</button></form>
-  {% endif %}
+  <nav>
+    <a href="/features">Features</a><a href="/getting-started">Docs</a><a href="/pricing">Pricing</a>
+    {% if user %}<a href="/dashboard">Dashboard</a>
+    <form class="inline" method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}">
+      <span class="muted">{{ user.username }}</span> · <button class="link">Log out</button></form>
+    {% else %}<a href="/login">Log in</a><a href="/signup">Sign up free</a>{% endif %}
+  </nav>
 </header>
 <main>{% block content %}{% endblock %}</main>
 <footer class="muted">
-  <p>Need help, or support for another store? <a href="mailto:{{ support_email }}">{{ support_email }}</a></p>
-  <p><a href="/docs">API docs</a><span class="sep">·</span><a href="{{ source_url }}" rel="noopener">GitHub</a><span class="sep">·</span><a href="{{ source_url }}/blob/main/SECURITY.md" rel="noopener">Security</a><span class="sep">·</span><a href="{{ source_url }}/blob/main/LICENSE" rel="noopener">MIT license</a></p>
+  <p>{{ contact_to_buy }}: <a href="{{ contact_url }}">{{ support_email }}</a></p>
+  <p><a href="/getting-started">Docs</a><span class="sep">·</span><a href="/docs">API reference</a><span class="sep">·</span><a href="/features">Features</a><span class="sep">·</span><a href="/pricing">Pricing</a><span class="sep">·</span><a href="/faq">FAQ</a><span class="sep">·</span><a href="/terms">Terms</a><span class="sep">·</span><a href="/privacy">Privacy</a><span class="sep">·</span><a href="/contact">Contact</a></p>
+  <p><a href="{{ source_url }}" rel="noopener">GitHub</a><span class="sep">·</span><a href="{{ source_url }}/blob/main/SECURITY.md" rel="noopener">Security</a><span class="sep">·</span><a href="{{ source_url }}/blob/main/LICENSE" rel="noopener">MIT license</a></p>
   <p>&copy; {{ year }} <a href="{{ company_url }}" rel="noopener">{{ company_name }}</a></p>
 </footer>
 </body>

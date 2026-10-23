@@ -92,32 +92,65 @@ def test_walmart_signature_verifies():
                             padding.PKCS1v15(), hashes.SHA256())
 
 
-def test_cart_rate_limits(client, api_key, monkeypatch):
-    from app.config import get_settings
-    monkeypatch.setattr(get_settings(), "own_key_limit_per_window", 2)
+def test_cart_rate_limits(client, api_key):
+    """Free plan: 10 requests per 5 minutes."""
     h = {"Authorization": f"Bearer {api_key}"}
     body = {"items": [{"name": "milk"}]}
-    assert client.post("/v1/cart", headers=h, json=body).status_code == 200
-    assert client.post("/v1/cart", headers=h, json=body).status_code == 200
+    for _ in range(10):
+        assert client.post("/v1/cart", headers=h, json=body).status_code == 200
     r = client.post("/v1/cart", headers=h, json=body)
-    assert r.status_code == 429 and int(r.headers["Retry-After"]) > 0 and "per 5 minutes" in r.json()["detail"]
+    detail = r.json()["detail"]
+    assert r.status_code == 429 and int(r.headers["Retry-After"]) > 0
+    # the shared over-limit message shape
+    assert "10 requests per 5 minutes" in detail and "on the Free plan" in detail
+    assert "Need more? Contact us to buy: mailto:helpdesk@flexxxlab.com" in detail
     assert client.get("/v1/me", headers=h).status_code == 200  # only /v1/cart is limited
 
 
-def test_cart_daily_limit(client, api_key, monkeypatch):
-    from datetime import timedelta
-    from app.config import get_settings
-    monkeypatch.setattr(get_settings(), "own_key_limit_per_day", 6)
+def test_cart_monthly_limit(client, api_key):
+    """Free plan: 200 requests per calendar month, counted in usage_monthly."""
     from app.db import SessionLocal
-    from app.models import CartRequestLog, utcnow
+    from app.models import UsageMonthly, utcnow
+    from app.ratelimit import month_key
     h = {"Authorization": f"Bearer {api_key}"}
-    with SessionLocal() as db:  # 5 earlier requests today, all outside the 5-minute window
-        for i in range(5):
-            db.add(CartRequestLog(user_id=1, created_at=utcnow() - timedelta(hours=1 + i)))
+    with SessionLocal() as db:  # 199 used this month
+        db.add(UsageMonthly(user_id=1, month=month_key(utcnow()), count=199))
         db.commit()
     assert client.post("/v1/cart", headers=h, json={"items": [{"name": "milk"}]}).status_code == 200
     r = client.post("/v1/cart", headers=h, json={"items": [{"name": "milk"}]})
-    assert r.status_code == 429 and "per day" in r.json()["detail"]
+    detail = r.json()["detail"]
+    assert r.status_code == 429 and "200 requests per calendar month" in detail and "Free plan" in detail
+    assert "Contact us to buy" in detail and int(r.headers["Retry-After"]) > 3600
+    with SessionLocal() as db:
+        assert db.get(UsageMonthly, (1, month_key(utcnow()))).count == 200
+    page = client.get("/dashboard").text  # the dashboard shows the same message
+    assert "200 requests per calendar month" in page and "Contact us to buy" in page
+
+
+def test_month_rollover_helpers():
+    from datetime import datetime
+    from app.ratelimit import month_key, next_month_start
+    assert next_month_start(datetime(2026, 12, 31, 23)) == datetime(2027, 1, 1)
+    assert next_month_start(datetime(2026, 10, 23)) == datetime(2026, 11, 1)
+    assert month_key(datetime(2026, 3, 9)) == "2026-03"
+
+
+def test_pro_plan_has_higher_limits_and_platform_ignores_plan(client, api_key):
+    from app.db import SessionLocal
+    from app.models import UsageMonthly, User, utcnow
+    from app.ratelimit import limits_for, month_key, monthly_limit_for
+    from app.admin import main
+    with SessionLocal() as db:
+        u = db.get(User, 1)
+        assert u.plan == "free" and monthly_limit_for(db, u) == 200
+        u.plan = "pro"
+        db.commit()
+        assert limits_for(db, u) == [(300, 100), (86400, 5000)] and monthly_limit_for(db, u) == 100_000
+    assert main(["grant", "bob", "--limit", "120:5"]) == 0       # operator grant: own limits, no monthly cap
+    with SessionLocal() as db:
+        u = db.get(User, 1)
+        assert limits_for(db, u) == [(120, 5)]
+        assert monthly_limit_for(db, u) is None
 
 
 # ---------- per-developer Walmart credentials ----------
@@ -240,12 +273,11 @@ def test_parse_and_describe_limits():
 
 
 def test_dashboard_shows_limits_and_usage(client, api_key, monkeypatch):
-    from app.config import get_settings
-    monkeypatch.setattr(get_settings(), "own_key_limit_per_window", 2)
     h = {"X-API-Key": api_key}
     client.post("/v1/cart", headers=h, json={"items": [{"name": "milk"}]})
     page = client.get("/dashboard").text
-    assert "Rate limits" in page and "per 5 minutes" in page and "per day" in page
+    assert "Rate limits" in page and "per 5 minutes" in page and "per calendar month" in page
+    assert "Free" in page and "Contact us to buy" in page and 'href="mailto:helpdesk@flexxxlab.com"' in page
     assert "/admin" not in page                       # not an admin
     assert client.get("/admin").status_code == 404
 
@@ -314,8 +346,9 @@ def test_user_sets_own_limits(client, api_key):
 
 
 def test_user_limits_cannot_exceed_ceiling(client, api_key, monkeypatch):
-    from app.config import get_settings
-    monkeypatch.setattr(get_settings(), "own_key_max_per_window", 3)
+    from dataclasses import replace
+    from app.plans import PLANS
+    monkeypatch.setitem(PLANS, "free", replace(PLANS["free"], tiers=((300, 3),)))
     r = _set_limits(client, [(1000, 300)])
     assert "account maximum still applies: 3 per 5 minutes" in r.text
     h = {"X-API-Key": api_key}
@@ -342,3 +375,188 @@ def test_limits_form_validation(client, api_key):
     assert "a number from 1" in _set_limits(client, [(5, 7)]).text            # window not offered
     assert "at least one limit" in _set_limits(client, [("", 60)]).text
     assert client.post("/limits", data={"csrf": "bad", "action": "save"}).status_code == 400
+
+
+# ---------- self-serve: notices, throttle, plans, admin verify ----------
+NOTICE = "Verification emails can take longer than usual. For immediate access, email helpdesk@flexxxlab.com."
+
+
+def test_signup_shows_pending_notice_and_login_unverified_shows_it_with_resend(client, make_user):
+    page = client.get("/signup").text
+    assert 'href="/terms"' in page and 'href="/privacy"' in page
+    r = client.post("/signup", data=dict(username="fay", email="fay@example.com", password="s3cret-pass",
+                                         password2="s3cret-pass", csrf=csrf(page)))
+    assert "Check your email" in r.text and NOTICE in r.text
+    page = client.get("/dashboard").text
+    client.post("/logout", data={"csrf": csrf(page)})
+    page = client.get("/login").text
+    assert "Email helpdesk@flexxxlab.com" in page          # forgot password
+    r = client.post("/login", data={"username": "fay", "password": "s3cret-pass", "csrf": csrf(page)})
+    assert NOTICE in r.text and "Resend verification email" in r.text and "Create API key" not in r.text
+
+
+def test_signup_throttle_429(client, monkeypatch):
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "throttle_signup_max", 2)
+    for i in range(2):
+        page = client.get("/signup").text
+        r = client.post("/signup", data=dict(username=f"u{i}x", email=f"u{i}@example.com",
+                                             password="s3cret-pass", password2="s3cret-pass", csrf=csrf(page)))
+        assert r.status_code == 200
+    page = client.get("/signup").text
+    r = client.post("/signup", data=dict(username="u3x", email="u3@example.com", password="s3cret-pass",
+                                         password2="s3cret-pass", csrf=csrf(page)))
+    assert r.status_code == 429 and int(r.headers["Retry-After"]) > 0
+    assert "Too many sign-up attempts" in r.text and "helpdesk@flexxxlab.com" in r.text
+    from app.db import SessionLocal
+    from app.models import User
+    with SessionLocal() as db:
+        assert db.query(User).count() == 2                    # the throttled signup created nothing
+
+
+def test_login_and_resend_throttle_429(client, make_user, monkeypatch):
+    from app.config import get_settings
+    make_user("gus", verify=False)
+    monkeypatch.setattr(get_settings(), "throttle_login_max", 3)
+    monkeypatch.setattr(get_settings(), "throttle_resend_max", 1)
+    page = client.get("/dashboard").text
+    assert client.post("/verify/resend", data={"csrf": csrf(page)}).status_code == 200
+    r = client.post("/verify/resend", data={"csrf": csrf(page)})
+    assert r.status_code == 429 and "Retry-After" in r.headers
+    page = client.get("/login").text
+    codes = [client.post("/login", data={"username": "gus", "password": "wrong-pass", "csrf": csrf(page)}).status_code
+             for _ in range(4)]
+    assert codes == [400, 400, 400, 429]
+    # even the right password is refused while throttled
+    assert client.post("/login", data={"username": "gus", "password": "s3cret-pass", "csrf": csrf(page)}).status_code == 429
+
+
+def test_throttle_is_per_ip_and_window_expires(client):
+    from datetime import timedelta
+    from app.db import SessionLocal
+    from app.models import AuthAttempt, utcnow
+    from app.throttle import retry_after
+    with SessionLocal() as db:
+        for _ in range(5):
+            assert retry_after(db, "1.1.1.1", "signup") == 0
+        assert retry_after(db, "1.1.1.1", "signup") > 0
+        assert retry_after(db, "2.2.2.2", "signup") == 0       # another IP is unaffected
+        for row in db.query(AuthAttempt).filter_by(ip="1.1.1.1").all():
+            row.created_at = utcnow() - timedelta(hours=2)
+        db.commit()
+        assert retry_after(db, "1.1.1.1", "signup") == 0       # old attempts age out
+
+
+def test_admin_verify_and_plan_and_cli(client, make_user, monkeypatch):
+    from app.admin import main
+    from app.config import get_settings
+    from app.db import SessionLocal
+    from app.models import User
+    make_user("admin1")                                         # id 1, verified
+    monkeypatch.setattr(get_settings(), "admin_usernames", "admin1")
+    client.post("/logout", data={"csrf": csrf(client.get("/dashboard").text)})
+    make_user("henry", verify=False)                            # id 2
+    client.post("/logout", data={"csrf": csrf(client.get("/dashboard").text)})
+    page = client.get("/login").text
+    client.post("/login", data={"username": "admin1", "password": "s3cret-pass", "csrf": csrf(page)})
+    page = client.get("/admin").text
+    assert "waiting for verification" in page
+    post = lambda **kw: client.post("/admin/access", data=dict(csrf=csrf(client.get("/admin").text), **kw))
+    assert "Verified henry" in post(user_id=2, action="verify").text
+    assert "now on the Pro plan" in post(user_id=2, action="plan", plan="pro").text
+    assert "Unknown plan" in post(user_id=2, action="plan", plan="gold").text
+    with SessionLocal() as db:
+        u = db.get(User, 2)
+        assert u.is_verified and u.plan == "pro"
+    assert main(["plan", "henry", "free"]) == 0 and main(["users"]) == 0
+
+
+def test_cli_verify_move_key_delete(client, api_key, make_user):
+    from app.admin import main
+    from app.db import SessionLocal
+    from app.models import ApiKey, PlatformAccess, User
+    make_user("presspot", verify=False)
+    assert main(["verify", "presspot@example.com"]) == 0 and main(["verify", "nobody"]) == 1
+    assert main(["grant", "bob", "--limit", "120:5"]) == 0
+    with SessionLocal() as db:
+        prefix = db.query(ApiKey).one().prefix
+    assert main(["move-key", prefix, "presspot"]) == 0
+    with SessionLocal() as db:
+        pp = db.query(User).filter_by(username="presspot").one()
+        assert db.query(ApiKey).one().user_id == pp.id and db.get(PlatformAccess, pp.id).limits == "120:5"
+        assert db.get(PlatformAccess, 1) is None
+    h = {"X-API-Key": api_key}                                  # the key value still works
+    assert client.get("/v1/me", headers=h).json()["username"] == "presspot"
+    assert main(["delete-user", "bob"]) == 2                    # needs --yes
+    assert main(["delete-user", "bob", "--yes"]) == 0
+    with SessionLocal() as db:
+        assert db.query(User).filter_by(username="bob").first() is None
+
+
+def test_public_pages_seo_and_footer(client):
+    import json, re
+    for path in ("/", "/features", "/getting-started", "/faq", "/pricing", "/contact", "/terms", "/privacy", "/signup"):
+        r = client.get(path)
+        assert r.status_code == 200, path
+        html = r.text
+        assert '<html lang="en">' in html and re.search(r'<title>[^<]{10,}</title>', html)
+        assert re.search(r'<meta name="description" content="[^"]{40,}">', html), path
+        want = "http://testserver/" if path == "/" else f"http://testserver{path}"
+        assert f'<link rel="canonical" href="{want}">' in html, path
+        assert 'property="og:title"' in html and "application/ld+json" in html
+        ld = json.loads(re.search(r'application/ld\+json">(.*?)</script>', html, re.S).group(1))
+        assert {n["@type"] for n in ld["@graph"]} == {"SoftwareApplication", "Organization"}
+        for link in ("/terms", "/privacy", "/pricing", "/getting-started", "/contact"):   # shared footer
+            assert f'href="{link}"' in html
+    assert "Walmart cart API" in client.get("/").text
+    assert "Flutter Walmart add to cart" in client.get("/getting-started").text
+    assert "grocery cart link" in client.get("/faq").text.lower()
+    pricing = client.get("/pricing").text
+    assert "10 requests per 5 minutes" in pricing and "200 requests per calendar month" in pricing
+    assert "Contact us to buy" in pricing and "$" not in pricing.replace("$0", "")
+    assert '<meta name="robots" content="noindex">' in client.get("/login").text
+
+
+def test_robots_sitemap_llms(client):
+    robots = client.get("/robots.txt")
+    assert robots.status_code == 200 and "Sitemap: http://testserver/sitemap.xml" in robots.text
+    assert "Disallow: /dashboard" in robots.text
+    sm = client.get("/sitemap.xml")
+    assert sm.status_code == 200 and "xml" in sm.headers["content-type"]
+    for p in ("/features", "/getting-started", "/faq", "/pricing", "/terms", "/privacy", "/contact"):
+        assert f"<loc>http://testserver{p}</loc>" in sm.text
+    llms = client.get("/llms.txt")
+    assert llms.status_code == 200 and "/v1/cart" in llms.text and "cart_bridge" in llms.text
+    assert "helpdesk@flexxxlab.com" in llms.text and client.get("/favicon.svg").status_code == 200
+
+
+def test_home_redirects_logged_in_user(client, make_user):
+    make_user("ivy")
+    assert client.get("/", follow_redirects=False).headers["location"] == "/dashboard"
+
+
+def test_migration_is_idempotent_on_old_schema(tmp_path):
+    """An old-schema DB (no users.plan, no new tables) is upgraded in place, twice, without losing rows."""
+    import sqlite3
+    from sqlalchemy import create_engine, inspect
+    from app.migrate import migrate
+    path = tmp_path / "old.db"
+    con = sqlite3.connect(path)
+    con.executescript("""
+      CREATE TABLE users (id INTEGER PRIMARY KEY, username VARCHAR(32) NOT NULL UNIQUE, email VARCHAR(254) NOT NULL UNIQUE,
+        password_hash VARCHAR(255) NOT NULL, email_verified_at DATETIME, is_active BOOLEAN NOT NULL, created_at DATETIME NOT NULL);
+      CREATE TABLE platform_access (user_id INTEGER PRIMARY KEY REFERENCES users(id));
+      INSERT INTO users VALUES (1,'old','old@example.com','x','2026-01-01',1,'2026-01-01');
+      INSERT INTO platform_access VALUES (1);
+    """)
+    con.commit(); con.close()
+    eng = create_engine(f"sqlite:///{path}")
+    first = migrate(eng)
+    assert "added users.plan" in first and "added platform_access.limits" in first
+    assert "created table usage_monthly" in first and "created table auth_attempts" in first
+    assert migrate(eng) == []                                   # second run does nothing
+    with eng.connect() as c:
+        from sqlalchemy import text
+        assert c.execute(text("SELECT username, plan FROM users")).all() == [("old", "free")]
+        assert c.execute(text("SELECT count(*) FROM platform_access")).scalar() == 1
+    assert "plan" in {c["name"] for c in inspect(eng).get_columns("users")}

@@ -19,6 +19,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     email_verified_at: Mapped[datetime | None] = mapped_column(default=None)
     is_active: Mapped[bool] = mapped_column(default=True)
+    plan: Mapped[str] = mapped_column(String(20), default="free", server_default="free")
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
     api_keys: Mapped[list["ApiKey"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -95,3 +96,24 @@ class UserLimits(Base):
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     limits: Mapped[str] = mapped_column(String(200))  # "seconds:count,..."
+
+
+class UsageMonthly(Base):
+    """Cart requests per user per calendar month (UTC, month = "YYYY-MM") for monthly plan caps."""
+
+    __tablename__ = "usage_monthly"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    month: Mapped[str] = mapped_column(String(7), primary_key=True)
+    count: Mapped[int] = mapped_column(default=0)
+
+
+class AuthAttempt(Base):
+    """One row per signup/login/resend attempt, keyed by client IP, for per-IP throttling."""
+
+    __tablename__ = "auth_attempts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ip: Mapped[str] = mapped_column(String(64), index=True)
+    action: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow, index=True)
