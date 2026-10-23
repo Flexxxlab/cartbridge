@@ -480,6 +480,7 @@ def test_cli_verify_move_key_delete(client, api_key, make_user):
     assert main(["grant", "bob", "--limit", "120:5"]) == 0
     with SessionLocal() as db:
         prefix = db.query(ApiKey).one().prefix
+    assert main(["keys"]) == 0
     assert main(["move-key", prefix, "presspot"]) == 0
     with SessionLocal() as db:
         pp = db.query(User).filter_by(username="presspot").one()

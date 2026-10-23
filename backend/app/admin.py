@@ -6,6 +6,7 @@
   list                                      show accounts with platform access
   passwd <username>                         set a new password (prompts; nothing is echoed)
   users                                     all accounts: verified?, plan, keys, requests this month
+  keys                                      active API keys: prefix, owner, last used (never the key itself)
   verify <username|email>                   mark the email verified (manual step while email isn't sent)
   plan <username> <free|pro>                change the account's plan
   move-key <key-prefix> <username>          give an API key (and its platform grant + limits) to another account;
@@ -96,6 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("username")
     sub.add_parser("list")
     sub.add_parser("users")
+    sub.add_parser("keys")
     v = sub.add_parser("verify")
     v.add_argument("who", metavar="username|email")
     pl = sub.add_parser("plan")
@@ -121,6 +123,14 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if a.cmd == "users":
             return _users(db)
+        if a.cmd == "keys":
+            print("prefix\towner\tname\tcreated\tlast_used")
+            for k, u in db.execute(select(ApiKey, User).join(User, User.id == ApiKey.user_id)
+                                   .where(ApiKey.revoked_at.is_(None)).order_by(ApiKey.id)).all():
+                print(f"{k.prefix}\t{u.username}\t{k.name}\t{k.created_at:%Y-%m-%d}\t"
+                      f"{k.last_used_at:%Y-%m-%d %H:%M}" if k.last_used_at else
+                      f"{k.prefix}\t{u.username}\t{k.name}\t{k.created_at:%Y-%m-%d}\tnever")
+            return 0
         if a.cmd == "verify":
             return _verify(db, a.who)
         if a.cmd == "move-key":
