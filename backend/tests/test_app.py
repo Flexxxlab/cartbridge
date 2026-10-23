@@ -454,9 +454,7 @@ def test_admin_verify_and_plan_and_cli(client, make_user, monkeypatch):
     from app.models import User
     make_user("admin1")                                         # id 1, verified
     monkeypatch.setattr(get_settings(), "admin_usernames", "admin1")
-    client.post("/logout", data={"csrf": csrf(client.get("/dashboard").text)})
     make_user("henry", verify=False)                            # id 2
-    client.post("/logout", data={"csrf": csrf(client.get("/dashboard").text)})
     page = client.get("/login").text
     client.post("/login", data={"username": "admin1", "password": "s3cret-pass", "csrf": csrf(page)})
     page = client.get("/admin").text
@@ -621,3 +619,24 @@ def test_migration_is_idempotent_on_old_schema(tmp_path):
         assert c.execute(text("SELECT username, plan FROM users")).all() == [("old", "free")]
         assert c.execute(text("SELECT count(*) FROM platform_access")).scalar() == 1
     assert "plan" in {c["name"] for c in inspect(eng).get_columns("users")}
+
+
+def test_admin_by_email_verified_only(client, make_user, monkeypatch):
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "admin_usernames", "Carol@Example.com")
+    make_user("carol", verify=False)
+    assert client.get("/admin").status_code == 404           # unverified, email listed
+
+
+def test_admin_by_email_verified_ok(client, make_user, monkeypatch):
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "admin_usernames", "Carol@Example.com")
+    make_user("carol")
+    assert client.get("/admin").status_code == 200
+
+
+def test_admin_by_email_unlisted_refused(client, make_user, monkeypatch):
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "admin_usernames", "other@example.com")
+    make_user("carol")
+    assert client.get("/admin").status_code == 404

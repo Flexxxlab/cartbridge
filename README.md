@@ -120,7 +120,7 @@ Set these in `backend/.env` (see `.env.example`).
 | --- | --- |
 | `BASE_URL` | Public URL of the server (`https://...` enables secure cookies) |
 | `SECRET_KEY` | Signs session cookies. **Required in production.** |
-| `ADMIN_USERNAMES` | Comma-separated usernames allowed to open `/admin` (edit limits, grant platform access) |
+| `ADMIN_USERNAMES` | Comma-separated usernames or emails allowed to open `/admin` (edit limits, grant platform access) |
 | `ENCRYPTION_KEY` | Encrypts stored Walmart credentials. Keep it safe: they cannot be decrypted without it. |
 | `DATABASE_URL` | SQLAlchemy URL (default: SQLite file) |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Email for verification links. Empty `SMTP_HOST` prints emails to the console. |
@@ -135,7 +135,7 @@ enable the hook with `git config core.hooksPath .githooks`.
 ## Granting platform access (operators)
 
 Users manage their own limits. Operators decide which accounts may use the server's own Walmart
-credentials, and the maximum those accounts may use. Usernames in `ADMIN_USERNAMES` get an
+credentials, and the maximum those accounts may use. Usernames or emails in `ADMIN_USERNAMES` get an
 **Admin** page at `/admin` for this (optional; the command line below does the same). Tiers are `window-seconds:max-requests` pairs, for example
 5 per 2 minutes, 10 per hour and 20 per day:
 

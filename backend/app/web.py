@@ -65,7 +65,8 @@ def render(request: Request, name: str, status_code: int = 200, indexable: bool 
 
 
 def is_admin(user: User | None) -> bool:
-    return bool(user and user.is_verified and user.username.lower() in get_settings().admins)
+    admins = get_settings().admins
+    return bool(user and user.is_verified and (user.username.lower() in admins or user.email.lower() in admins))
 
 
 def current_user(request: Request, db: Session) -> User | None:

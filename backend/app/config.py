@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     throttle_resend_max: int = 5
     throttle_resend_window: int = 3600
 
-    # Comma-separated usernames allowed to use /admin (edit limits, grant platform access).
+    # Comma-separated usernames or emails allowed to use /admin (edit limits, grant platform access).
     admin_usernames: str = ""
 
     # Encrypts stored Walmart credentials. Falls back to a key derived from secret_key.
