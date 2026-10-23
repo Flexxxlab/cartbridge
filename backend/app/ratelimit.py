@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta
 
 from fastapi import Depends, HTTPException, status
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .api_auth import require_api_key
@@ -131,6 +132,22 @@ def usage_for(db: Session, user: User) -> list[dict]:
     return out
 
 
+def _bump_monthly(db: Session, user_id: int, month: str) -> None:
+    """Atomic count += 1. The first request of a month inserts; if a concurrent request won that insert
+    (IntegrityError), retry the update once."""
+    def bump() -> bool:
+        return db.execute(update(UsageMonthly).where(UsageMonthly.user_id == user_id, UsageMonthly.month == month)
+                          .values(count=UsageMonthly.count + 1)).rowcount > 0
+    if bump():
+        return
+    try:
+        with db.begin_nested():
+            db.add(UsageMonthly(user_id=user_id, month=month, count=1))
+    except IntegrityError:
+        if not bump():
+            raise
+
+
 def enforce_cart_limits(user: User = Depends(require_api_key), db: Session = Depends(get_db)) -> User:
     now = utcnow()
     db.execute(delete(CartRequestLog).where(CartRequestLog.created_at <= now - timedelta(seconds=MAX_WINDOW)))
@@ -161,11 +178,6 @@ def enforce_cart_limits(user: User = Depends(require_api_key), db: Session = Dep
 
     db.add(CartRequestLog(user_id=user.id, created_at=now))
     if cap is not None:
-        month = month_key(now)
-        row = db.get(UsageMonthly, (user.id, month))
-        if row is None:
-            db.add(UsageMonthly(user_id=user.id, month=month, count=1))
-        else:
-            row.count += 1
+        _bump_monthly(db, user.id, month_key(now))
     db.commit()
     return user

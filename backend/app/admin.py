@@ -9,9 +9,10 @@
   keys                                      active API keys: prefix, owner, last used (never the key itself)
   verify <username|email>                   mark the email verified (manual step while email isn't sent)
   plan <username> <free|pro>                change the account's plan
-  move-key <key-prefix> <username>          give an API key (and its platform grant + limits) to another account;
+  move-key <key-prefix> <username> [--force] give an API key (and its platform grant + limits) to another account;
                                             the key itself is unchanged, so clients keep working
-  delete-user <username> --yes              delete the account and everything it owns (irreversible)
+  delete-user <username> --yes [--force]    delete the account and everything it owns (irreversible);
+                                            refuses if it owns a platform grant or active key unless --force
 """
 import argparse
 import sys
@@ -51,7 +52,7 @@ def _verify(db, who: str) -> int:
     return 0
 
 
-def _move_key(db, prefix: str, username: str) -> int:
+def _move_key(db, prefix: str, username: str, force: bool = False) -> int:
     target = db.scalar(select(User).where(User.username == username))
     keys = db.scalars(select(ApiKey).where(ApiKey.prefix == prefix, ApiKey.revoked_at.is_(None))).all()
     if not target or len(keys) != 1:
@@ -63,6 +64,10 @@ def _move_key(db, prefix: str, username: str) -> int:
     if old.id == target.id:
         print("Key already belongs to that account.")
         return 0
+    if db.get(PlatformAccess, target.id) and not force:
+        print(f"Aborting: {target.username} already has platform access, so {old.username}'s grant and limits "
+              "would NOT move with the key. Check `list`; rerun with --force to move only the key.", file=sys.stderr)
+        return 2
     key.user_id = target.id
     # The platform grant and any self-chosen limits travel with the key's purpose.
     for model in (PlatformAccess, UserLimits):
@@ -74,9 +79,16 @@ def _move_key(db, prefix: str, username: str) -> int:
     return 0
 
 
-def _delete_user(db, user: User, confirmed: bool) -> int:
+def _delete_user(db, user: User, confirmed: bool, force: bool = False) -> int:
     if not confirmed:
         print("Refusing without --yes. This deletes the account and everything it owns.", file=sys.stderr)
+        return 2
+    grant = db.get(PlatformAccess, user.id)
+    keys = db.scalars(select(ApiKey.prefix).where(ApiKey.user_id == user.id, ApiKey.revoked_at.is_(None))).all()
+    if (grant or keys) and not force:
+        owns = (["a platform grant"] if grant else []) + ([f"{len(keys)} active API key(s): {', '.join(keys)}"] if keys else [])
+        print(f"Refusing: {user.username} owns {' and '.join(owns)}. Move the key first (move-key), "
+              "or pass --force to delete anyway.", file=sys.stderr)
         return 2
     for model in (EmailToken, CartRequestLog, WalmartCredential, PlatformAccess, UserLimits, UsageMonthly, ApiKey):
         db.execute(delete(model).where(model.user_id == user.id))  # SQLite doesn't enforce ON DELETE CASCADE
@@ -106,9 +118,11 @@ def main(argv: list[str] | None = None) -> int:
     mk = sub.add_parser("move-key")
     mk.add_argument("prefix", help="the key prefix shown in the dashboard, e.g. cb_AbC123xy")
     mk.add_argument("username", help="the account that should own the key")
+    mk.add_argument("--force", action="store_true", help="move even if a platform grant exists on either account")
     du = sub.add_parser("delete-user")
     du.add_argument("username")
     du.add_argument("--yes", action="store_true", help="required; there is no undo")
+    du.add_argument("--force", action="store_true", help="also delete an account that owns a platform grant or active key")
     pw = sub.add_parser("passwd")
     pw.add_argument("username")
     a = ap.parse_args(argv)
@@ -134,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
         if a.cmd == "verify":
             return _verify(db, a.who)
         if a.cmd == "move-key":
-            return _move_key(db, a.prefix, a.username)
+            return _move_key(db, a.prefix, a.username, a.force)
         user = db.scalar(select(User).where(User.username == a.username))
         if not user:
             print(f"No such user: {a.username}", file=sys.stderr)
@@ -145,7 +159,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{user.username} is now on the {PLANS[a.plan].name} plan")
             return 0
         if a.cmd == "delete-user":
-            return _delete_user(db, user, a.yes)
+            return _delete_user(db, user, a.yes, a.force)
         if a.cmd == "passwd":
             import getpass
             new = getpass.getpass("New password (min 8 chars): ")

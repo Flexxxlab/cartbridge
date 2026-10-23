@@ -488,10 +488,70 @@ def test_cli_verify_move_key_delete(client, api_key, make_user):
         assert db.get(PlatformAccess, 1) is None
     h = {"X-API-Key": api_key}                                  # the key value still works
     assert client.get("/v1/me", headers=h).json()["username"] == "presspot"
+    assert main(["delete-user", "presspot", "--yes"]) == 2      # owns the key + grant: refused
     assert main(["delete-user", "bob"]) == 2                    # needs --yes
     assert main(["delete-user", "bob", "--yes"]) == 0
     with SessionLocal() as db:
         assert db.query(User).filter_by(username="bob").first() is None
+
+
+def test_delete_user_refused_with_grant_or_key_unless_force(client, api_key):
+    from app.admin import main
+    from app.db import SessionLocal
+    from app.models import User
+    assert main(["delete-user", "bob", "--yes"]) == 2           # owns an active key
+    assert main(["revoke", "bob"]) == 0
+    assert main(["grant", "bob"]) == 0
+    assert main(["delete-user", "bob", "--yes"]) == 2           # owns a platform grant
+    with SessionLocal() as db:
+        assert db.query(User).filter_by(username="bob").first() is not None
+    assert main(["delete-user", "bob", "--yes", "--force"]) == 0
+    with SessionLocal() as db:
+        assert db.query(User).filter_by(username="bob").first() is None
+
+
+def test_move_key_aborts_if_target_has_grant_unless_force(client, api_key, make_user):
+    from app.admin import main
+    from app.db import SessionLocal
+    from app.models import ApiKey, PlatformAccess
+    make_user("presspot", verify=False)
+    assert main(["grant", "bob", "--limit", "120:5"]) == 0
+    assert main(["grant", "presspot"]) == 0
+    with SessionLocal() as db:
+        prefix = db.query(ApiKey).one().prefix
+    assert main(["move-key", prefix, "presspot"]) == 2          # target already has a grant
+    with SessionLocal() as db:
+        assert db.query(ApiKey).one().user_id == 1 and db.get(PlatformAccess, 1).limits == "120:5"
+    assert main(["move-key", prefix, "presspot", "--force"]) == 0
+    with SessionLocal() as db:
+        assert db.query(ApiKey).one().user_id == 2 and db.get(PlatformAccess, 1) is not None  # grant stayed
+
+
+def test_monthly_counter_first_insert_increment_and_race(client):
+    from app.db import SessionLocal
+    from app.models import UsageMonthly
+    from app.ratelimit import _bump_monthly
+    with SessionLocal() as db:
+        assert db.get(UsageMonthly, (7, "2026-10")) is None
+        _bump_monthly(db, 7, "2026-10"); db.commit()
+        assert db.get(UsageMonthly, (7, "2026-10")).count == 1
+        _bump_monthly(db, 7, "2026-10"); db.commit()
+        db.expire_all()
+        assert db.get(UsageMonthly, (7, "2026-10")).count == 2
+    # lost race: our UPDATE saw no row, but another request inserted it before our INSERT
+    with SessionLocal() as other:
+        other.add(UsageMonthly(user_id=8, month="2026-10", count=1)); other.commit()
+    with SessionLocal() as db:
+        real, calls = db.execute, []
+        def racing(stmt, *a, **k):
+            if not calls:
+                calls.append(1)
+                return type("R", (), {"rowcount": 0})()
+            return real(stmt, *a, **k)
+        db.execute = racing
+        _bump_monthly(db, 8, "2026-10"); db.commit()
+    with SessionLocal() as db:
+        assert db.get(UsageMonthly, (8, "2026-10")).count == 2
 
 
 def test_public_pages_seo_and_footer(client):
