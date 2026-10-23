@@ -172,9 +172,9 @@ You choose your own limits. On your [dashboard](https://cartbridge.flexxxlab.com
 set rules such as *10 requests per minute* or *1,000 per day* to protect your Walmart quota from
 a runaway app, and watch live usage. Limits apply across all of your API keys.
 
-New accounts start at **20 requests per 5 minutes and 500 per day**, and you can raise them up
-to **100 per 5 minutes and 5,000 per day**. When a limit is reached,
-`CartBridgeException.isRateLimited` is `true` and the message says how long to wait. Need more?
+The Free plan allows **10 requests per 5 minutes and 200 per calendar month**, and you can set
+stricter limits of your own. When a limit is reached, `CartBridgeException.isRateLimited` is `true` and the
+message says how long to wait. Need more?
 [Contact us](#support).
 
 ## Keeping your API key safe

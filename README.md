@@ -44,15 +44,19 @@ curl -X POST https://cartbridge.flexxxlab.com/v1/cart \
 The response contains a `cart_url`. Open it and the items are in the Walmart cart. Interactive
 API docs are at [/docs](https://cartbridge.flexxxlab.com/docs).
 
-## Rate limits
+## Plans and rate limits
 
-Every user sets their own limits on the dashboard (for example *10 per minute* and *1,000 per
-day*) and sees live usage. Limits apply across all of an account's API keys, on `/v1/cart` only.
+Every account has a plan (`free` by default). Limits apply across all of an account's API keys, on
+`/v1/cart` only, and the dashboard shows live usage. You can set stricter limits of your own.
 
-| Account type | Starts at | Can be raised to |
-| --- | --- | --- |
-| Your own Walmart credentials | 20 per 5 minutes, 500 per day | 100 per 5 minutes, 5,000 per day |
-| Operator-granted access to CartBridge's Walmart credentials | The granted limits | Only made stricter |
+| Account type | Limits |
+| --- | --- |
+| **Free**: your own Walmart credentials | 10 requests per 5 minutes and 200 per calendar month |
+| **Pro**: set by the operator after a "Contact us to buy" email | 100 per 5 minutes, 5,000 per day, 100,000 per month |
+| Operator-granted access to CartBridge's Walmart credentials | The granted limits (e.g. 5 per 2 minutes, 10 per hour, 20 per day), only made stricter |
+
+The plan table is in `backend/app/plans.py`. Over a limit, the API and the dashboard show one message ending in
+"Need more? Contact us to buy" (see `docs/self-serve-ux.md`).
 
 When a limit is hit the API returns `429` with a `Retry-After` header saying how many seconds
 to wait.
@@ -123,8 +127,7 @@ Set these in `backend/.env` (see `.env.example`).
 | `WALMART_PROVIDER` | `mock` (fake products) or `affiliate` |
 | `WALMART_CONSUMER_ID`, `WALMART_KEY_VERSION`, `WALMART_PRIVATE_KEY_PATH` | The server's own Walmart credentials, for operator-granted accounts |
 | `CART_LIMIT_PER_WINDOW`, `CART_WINDOW_SECONDS`, `CART_LIMIT_PER_DAY` | Default limits for operator-granted accounts |
-| `OWN_KEY_LIMIT_PER_WINDOW`, `OWN_KEY_LIMIT_PER_DAY` | Starting limits for accounts using their own credentials |
-| `OWN_KEY_MAX_PER_WINDOW`, `OWN_KEY_MAX_PER_DAY` | The most those accounts can raise their own limits to |
+| `THROTTLE_SIGNUP_MAX` / `_WINDOW`, `THROTTLE_LOGIN_MAX` / `_WINDOW`, `THROTTLE_RESEND_MAX` / `_WINDOW` | Per-IP attempt limits (defaults: 5 per hour, 20 per 15 minutes, 5 per hour) |
 
 Never commit `.env` or `.pem` files. `.gitignore` and a pre-commit hook guard against it;
 enable the hook with `git config core.hooksPath .githooks`.
@@ -144,7 +147,16 @@ The same is available from the command line:
 
 ```sh
 python -m app.admin grant <username> --limit 120:5 --limit 3600:10 --limit 86400:20
+python -m app.admin users                  # all accounts, verified?, plan, usage
+python -m app.admin verify <username|email>  # manual verification while email isn't sent
+python -m app.admin plan <username> pro
 ```
+
+## Migrations and backups
+
+There is no Alembic. `python -m app.migrate` adds missing columns and tables and is safe to run any number of
+times (the app also runs it on start). Take a backup first: `deploy/backup-sqlite.sh` writes a consistent copy of
+the SQLite database, and `deploy/restore-test.sh` proves a backup restores.
 
 ## Self-hosting
 
@@ -161,8 +173,8 @@ regular backups of the database volume, and Postgres if you expect real traffic.
 
 ## Not yet included
 
-Password reset, Alembic migrations, per-IP limits on sign-up and login, and stores other
-than Walmart. Adding a store means implementing `StoreProvider` in `backend/app/stores/`.
+Password reset (email the helpdesk for now), sending email (tokens are logged until SMTP is set up), online
+payments, Alembic migrations, and stores other than Walmart. Adding a store means implementing `StoreProvider` in `backend/app/stores/`.
 
 ## Project layout
 
