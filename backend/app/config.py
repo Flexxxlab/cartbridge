@@ -27,7 +27,15 @@ class Settings(BaseSettings):
     smtp_starttls: bool = True
     smtp_ssl: bool = False  # implicit TLS (port 465)
 
-    email_token_ttl_hours: int = 24
+    # Resend (https://resend.com) transactional email. If resend_api_key is empty (and no SMTP host),
+    # emails are only logged and the site shows the "email helpdesk" notices instead.
+    resend_api_key: str | None = None
+    resend_api_url: str = "https://api.resend.com/emails"
+    email_from: str = "CartBridge <helpdesk@flexxxlab.com>"
+    email_reply_to: str = "helpdesk@flexxxlab.com"
+
+    email_token_ttl_hours: int = 24  # verification links
+    reset_token_ttl_minutes: int = 60  # password-reset links
     max_api_keys_per_user: int = 10
 
     # /v1/cart limits for accounts that use CartBridge's own Walmart access (e.g. a first-party app).
@@ -42,8 +50,16 @@ class Settings(BaseSettings):
     throttle_signup_window: int = 3600
     throttle_login_max: int = 20
     throttle_login_window: int = 900
-    throttle_resend_max: int = 5
+    throttle_resend_max: int = 3  # verification emails per IP per window
     throttle_resend_window: int = 3600
+    throttle_resend_acct_max: int = 3  # ... and per account
+    throttle_resend_acct_window: int = 3600
+    throttle_forgot_max: int = 5  # forgot-password requests per IP per window
+    throttle_forgot_window: int = 3600
+    throttle_forgot_email_max: int = 3  # ... and per requested address (hashed; applies whether or not it exists)
+    throttle_forgot_email_window: int = 3600
+    throttle_reset_max: int = 10  # set-new-password submissions per IP per window
+    throttle_reset_window: int = 3600
 
     # Comma-separated usernames or emails allowed to use /admin (edit limits, grant platform access).
     admin_usernames: str = ""
@@ -61,6 +77,11 @@ class Settings(BaseSettings):
     walmart_api_base: str = "https://developer.api.walmart.com/api-proxy/service/affil/product/v2"
     walmart_cart_base: str = "https://affil.walmart.com/cart/addToCart"
 
+
+    @property
+    def email_enabled(self) -> bool:
+        """True when real emails are sent (Resend key or SMTP host set)."""
+        return bool(self.resend_api_key or self.smtp_host)
 
     @property
     def admins(self) -> set[str]:

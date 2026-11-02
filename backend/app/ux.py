@@ -6,11 +6,15 @@ from .config import get_settings
 
 
 def verify_notice() -> str:
+    """The slow-email / helpdesk fallback. Empty when real emails are sent."""
+    if get_settings().email_enabled:
+        return ""
     return ("Verification emails can take longer than usual. "
             f"For immediate access, email {get_settings().support_email}.")
 
 
 def forgot_password() -> str:
+    """Fallback text for the login page; with real emails the page links to /forgot instead."""
     return f"Forgot your password? Email {get_settings().support_email}"
 
 

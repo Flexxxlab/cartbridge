@@ -173,8 +173,7 @@ regular backups of the database volume, and Postgres if you expect real traffic.
 
 ## Not yet included
 
-Password reset (email the helpdesk for now), sending email (tokens are logged until SMTP is set up), online
-payments, Alembic migrations, and stores other than Walmart. Adding a store means implementing `StoreProvider` in `backend/app/stores/`.
+Online payments, Alembic migrations, and stores other than Walmart. Adding a store means implementing `StoreProvider` in `backend/app/stores/`.
 
 ## Project layout
 

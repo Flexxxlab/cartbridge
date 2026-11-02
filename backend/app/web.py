@@ -8,23 +8,23 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from .config import get_settings
-from .db import get_db
-from .emailer import send_email
+from .auth_email import deliver_reset, deliver_verification, issue_token
+from .db import SessionLocal, get_db
 from .crypto import encrypt
 from .models import ApiKey, EmailToken, PlatformAccess, User, UserLimits, WalmartCredential, utcnow
 from .plans import PLANS, get_plan
 from .providers import walmart_source
 from .ratelimit import (MAX_COUNT, WINDOW_CHOICES, ceiling_for, chosen_for, default_chosen, describe_window,
                         limits_for, monthly_limit_for, parse_limits, plan_name_for, usage_for, describe_plan)
-from .throttle import throttled
+from .throttle import key_for_email, retry_after, throttled, WHAT
 from . import seo, ux
 from .stores import WalmartAffiliateProvider
 from .stores.base import StoreError
-from .security import hash_password, new_api_key, new_csrf, new_token, sha256_hex, verify_password
+from .security import hash_password, new_api_key, new_csrf, sha256_hex, verify_password
 
 router = APIRouter(include_in_schema=False)
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -57,7 +57,7 @@ def render(request: Request, name: str, status_code: int = 200, indexable: bool 
                support_email=cfg.support_email, company_name=cfg.company_name, company_url=cfg.company_url,
                source_url=cfg.source_url, year=utcnow().year, contact_url=ux.contact_url(),
                contact_to_buy=ux.CONTACT_TO_BUY, verify_notice=ux.verify_notice(),
-               forgot_password=ux.forgot_password(), site_url=site, indexable=indexable,
+               forgot_password=ux.forgot_password(), email_enabled=cfg.email_enabled, site_url=site, indexable=indexable,
                description=description, page_title=page_title, default_description=seo.DEFAULT_DESCRIPTION,
                canonical=site + request.url.path.rstrip("/") if indexable and request.url.path != "/" else site + "/",
                jsonld=seo.jsonld() if indexable else "")
@@ -74,19 +74,48 @@ def current_user(request: Request, db: Session) -> User | None:
     if not uid:
         return None
     user = db.get(User, uid)
-    return user if user and user.is_active else None
+    if not user or not user.is_active:
+        return None
+    if request.session.get("sv", 0) != user.session_version:  # password was changed or reset since this login
+        request.session.clear()
+        return None
+    return user
+
+
+def start_session(request: Request, user: User) -> None:
+    request.session.clear()  # rotate session on login
+    request.session["uid"] = user.id
+    request.session["sv"] = user.session_version
 
 
 def send_verification(db: Session, user: User, background: BackgroundTasks) -> None:
-    s = get_settings()
-    raw, h = new_token()
-    db.add(EmailToken(user_id=user.id, token_hash=h, purpose="verify",
-                      expires_at=utcnow() + timedelta(hours=s.email_token_ttl_hours)))
+    raw, h = issue_token(db, user, "verify", timedelta(hours=get_settings().email_token_ttl_hours))
+    background.add_task(deliver_verification, user, raw, h)
+
+
+def _sensitive(resp: HTMLResponse) -> HTMLResponse:
+    """Pages reached from an emailed link: don't cache, don't leak the URL (token) via Referer."""
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+def _consume_token(db: Session, token: str, purpose: str) -> EmailToken | None:
+    """Atomically marks a valid, unused, unexpired token used and returns it; None if it can't be used."""
+    if not token:
+        return None
+    t = db.scalar(select(EmailToken).where(EmailToken.token_hash == sha256_hex(token), EmailToken.purpose == purpose))
+    if not t or t.used_at or t.expires_at < utcnow():
+        return None
+    res = db.execute(update(EmailToken).where(EmailToken.id == t.id, EmailToken.used_at.is_(None))
+                     .values(used_at=utcnow()))
     db.commit()
-    link = f"{s.base_url.rstrip('/')}/verify?token={raw}"
-    body = (f"Hi {user.username},\n\nConfirm your email to start creating API keys:\n{link}\n\n"
-            f"This link expires in {s.email_token_ttl_hours} hours. If you didn't sign up, ignore this email.")
-    background.add_task(send_email, user.email, f"Verify your {s.app_name} account", body)
+    return t if res.rowcount == 1 else None
+
+
+def _live_token(db: Session, token: str, purpose: str) -> bool:
+    t = db.scalar(select(EmailToken).where(EmailToken.token_hash == sha256_hex(token or ""), EmailToken.purpose == purpose))
+    return bool(t and not t.used_at and t.expires_at >= utcnow())
 
 
 # ---------- pages ----------
@@ -133,27 +162,28 @@ def signup(
     db.add(user)
     db.commit()
     send_verification(db, user, background)
-    request.session.clear()
-    request.session["uid"] = user.id
+    start_session(request, user)
     return render(request, "message.html", title="Check your email", user=user,
-                  message=f"We created your account for {email} and sent a verification link.",
+                  message=(f"We created your account for {email} and sent a verification link "
+                           f"(it expires in {get_settings().email_token_ttl_hours} hours; check spam too)."
+                           if get_settings().email_enabled else
+                           f"We created your account for {email} and sent a verification link."),
                   notice=ux.verify_notice())
 
 
 @router.get("/verify")
 def verify(request: Request, token: str = "", db: Session = Depends(get_db)):
-    t = db.scalar(select(EmailToken).where(EmailToken.token_hash == sha256_hex(token), EmailToken.purpose == "verify"))
-    if not t or t.used_at or t.expires_at < utcnow():
-        return render(request, "message.html", 400, title="Link invalid or expired",
-                      message="Log in and use “Resend verification email” to get a new link.")
+    t = _consume_token(db, token, "verify")
+    if not t:
+        return _sensitive(render(request, "message.html", 400, title="Link invalid or expired",
+                                 message="Log in and use “Resend verification email” to get a new link."))
     user = db.get(User, t.user_id)
-    t.used_at = utcnow()
     if user and not user.email_verified_at:
         user.email_verified_at = utcnow()
-    db.commit()
-    return render(request, "message.html", title="Email verified",
-                  message="Your email is verified. You can now create API keys.",
-                  link=("/dashboard", "Go to dashboard"))
+        db.commit()
+    return _sensitive(render(request, "message.html", title="Email verified",
+                             message="Your email is verified. You can now create API keys.",
+                             link=("/dashboard", "Go to dashboard")))
 
 
 @router.post("/verify/resend")
@@ -164,11 +194,95 @@ def resend(request: Request, background: BackgroundTasks, csrf: str = Form(""), 
     user = current_user(request, db)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    if wait := retry_after(db, f"acct:{user.id}", "resend_acct"):
+        resp = render(request, "message.html", 429, title="Too many attempts", user=user,
+                      message=ux.throttle_message(WHAT["resend_acct"], wait).replace("from your network", "for your account"))
+        resp.headers["Retry-After"] = str(wait)
+        return resp
     if not user.is_verified:
         send_verification(db, user, background)
     return render(request, "message.html", title="Email sent",
                   message=f"A new verification link was sent to {user.email}.", user=user,
                   notice=ux.verify_notice(), link=("/dashboard", "Back to dashboard"))
+
+
+# ---------- forgot / reset password ----------
+FORGOT_SENT = "If an account exists for that email, we sent a link to reset the password. It expires in {m} minutes."
+
+
+def _reset_task(email: str) -> None:
+    """Runs after the response is sent, so the reply is the same whether or not the account exists."""
+    with SessionLocal() as db:
+        user = db.scalar(select(User).where(User.email == email))
+        if not user or not user.is_active:
+            return
+        raw, h = issue_token(db, user, "reset", timedelta(minutes=get_settings().reset_token_ttl_minutes))
+        deliver_reset(user, raw, h)
+
+
+@router.get("/forgot")
+def forgot_form(request: Request):
+    return render(request, "forgot.html")
+
+
+@router.post("/forgot")
+def forgot(request: Request, background: BackgroundTasks, email: str = Form(""), csrf: str = Form(""),
+           db: Session = Depends(get_db)):
+    if blocked := throttled(request, db, "forgot", render):  # per IP; the same for every address
+        return blocked
+    check_csrf(request, csrf)
+    cfg = get_settings()
+    if not cfg.email_enabled:  # fallback: no emails are sent, nothing is created
+        return render(request, "forgot.html")
+    email = email.strip().lower()[:254]
+    # Per-address limit on a hash of the input, counted whether or not the account exists; over the limit we
+    # just skip sending, so the response never changes.
+    if not retry_after(db, key_for_email(email), "forgot_email") and EMAIL_RE.match(email):
+        background.add_task(_reset_task, email)
+    return render(request, "message.html", title="Check your email",
+                  message=FORGOT_SENT.format(m=cfg.reset_token_ttl_minutes), link=("/login", "Back to log in"))
+
+
+@router.get("/reset")
+def reset_form(request: Request, token: str = "", db: Session = Depends(get_db)):
+    if not get_settings().email_enabled or not _live_token(db, token, "reset"):
+        return _sensitive(render(request, "message.html", 400, title="Link invalid or expired",
+                                 message="Request a new password reset link.", link=("/forgot", "Reset password")))
+    return _sensitive(render(request, "reset.html", token=token))
+
+
+@router.post("/reset")
+def reset(request: Request, token: str = Form(""), password: str = Form(""), password2: str = Form(""),
+          csrf: str = Form(""), db: Session = Depends(get_db)):
+    if blocked := throttled(request, db, "reset", render):
+        return blocked
+    check_csrf(request, csrf)
+    expired = _sensitive(render(request, "message.html", 400, title="Link invalid or expired",
+                                message="Request a new password reset link.", link=("/forgot", "Reset password")))
+    if not get_settings().email_enabled or not _live_token(db, token, "reset"):
+        return expired
+    errors = []
+    if len(password) < 8 or len(password) > 128:
+        errors.append("Password must be 8–128 characters.")
+    if password != password2:
+        errors.append("Passwords don't match.")
+    if errors:  # token not used up: the user can try again
+        return _sensitive(render(request, "reset.html", 400, token=token, errors=errors))
+    t = _consume_token(db, token, "reset")
+    user = db.get(User, t.user_id) if t else None
+    if not user or not user.is_active:
+        return expired
+    user.password_hash = hash_password(password)
+    user.session_version += 1  # logs out every browser session, including an attacker's
+    if not user.email_verified_at:  # they just proved they control the mailbox
+        user.email_verified_at = utcnow()
+    db.execute(update(EmailToken).where(EmailToken.user_id == user.id, EmailToken.used_at.is_(None))
+               .values(used_at=utcnow()))  # voids other reset links and pending verification links
+    db.commit()
+    request.session.clear()
+    return render(request, "message.html", title="Password updated",
+                  message="Your password was changed and you were logged out everywhere. Log in with the new one.",
+                  link=("/login", "Log in"))
 
 
 @router.get("/login")
@@ -191,8 +305,7 @@ def login(
     ok = verify_password(password, user.password_hash if user else _DUMMY_HASH)
     if not user or not ok or not user.is_active:
         return render(request, "login.html", 400, errors=["Wrong username or password."], username=username)
-    request.session.clear()  # rotate session on login
-    request.session["uid"] = user.id
+    start_session(request, user)
     return RedirectResponse("/dashboard", status_code=303)
 
 

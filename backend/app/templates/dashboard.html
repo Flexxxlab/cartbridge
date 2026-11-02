@@ -2,7 +2,7 @@
 {% block content %}
 {% if not user.is_verified %}
 <div class="card"><h1>Verify your email</h1>
-<div class="notice">Verify <b>{{ user.email }}</b> to create API keys. We sent you a link.<br>{{ verify_notice }}</div>
+<div class="notice">Verify <b>{{ user.email }}</b> to create API keys. We sent you a link{% if email_enabled %}; it expires in 24 hours (check spam too){% endif %}.{% if verify_notice %}<br>{{ verify_notice }}{% endif %}</div>
 <form method="post" action="/verify/resend"><input type="hidden" name="csrf" value="{{ csrf }}">
 <button>Resend verification email</button></form></div>
 {% else %}

@@ -5,7 +5,7 @@
 Questions? <a href="/faq">FAQ</a> or <a href="/contact">contact us</a>.</p>
 
 <h2>1. Create your account</h2>
-<p><a href="/signup">Sign up</a> with an email and password. Verification emails can take longer than usual; if yours does not
+<p><a href="/signup">Sign up</a> with an email and password. {% if email_enabled %}We email you a verification link (check spam){% else %}Verification emails can take longer than usual{% endif %}; if yours does not
 arrive, email <a href="mailto:{{ support_email }}">{{ support_email }}</a> and we will activate your account.</p>
 
 <h2>2. Connect your Walmart account</h2>

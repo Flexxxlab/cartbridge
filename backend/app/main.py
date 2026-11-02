@@ -8,11 +8,24 @@ from starlette.middleware.sessions import SessionMiddleware
 from . import api, pages, web
 from .config import get_settings
 from .db import engine
+from .emailer import mask_tokens
 from .migrate import migrate
 from .stores import close_providers
 
 logging.basicConfig(level=logging.INFO)
 settings = get_settings()
+
+
+class _RedactTokens(logging.Filter):
+    """Keeps one-time email tokens out of uvicorn's access log (GET /verify?token=..., /reset?token=...)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(mask_tokens(a) if isinstance(a, str) else a for a in record.args)
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(_RedactTokens())
 
 
 @asynccontextmanager

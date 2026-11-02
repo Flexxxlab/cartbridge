@@ -9,9 +9,9 @@ Source of truth in code: `backend/app/ux.py` (strings), `backend/app/plans.py` (
 | --- | --- |
 | After signup ("Check your email" screen, title) | `Check your email` |
 | After signup (body) | `We created your account for <email> and sent a verification link.` |
-| Notice, after signup, on unverified login, after resend, FAQ, contact | `Verification emails can take longer than usual. For immediate access, email helpdesk@flexxxlab.com.` |
+| Notice (only while no email provider is configured), after signup, on unverified login, after resend, FAQ, contact | `Verification emails can take longer than usual. For immediate access, email helpdesk@flexxxlab.com.` |
 | Unverified dashboard heading | `Verify your email` (with a "Resend verification email" button) |
-| Forgot password (login page) | `Forgot your password? Email helpdesk@flexxxlab.com` |
+| Forgot password (login page), only while no email provider is configured | `Forgot your password? Email helpdesk@flexxxlab.com` (with a Resend key: a "Forgot your password?" link to `/forgot`) |
 | Paid call to action (button, mailto:helpdesk@flexxxlab.com) | `Need more? Contact us to buy` |
 | Signup terms line | `By signing up you agree to the Terms and the Privacy Policy.` (links to /terms and /privacy) |
 | Resend page | `A new verification link was sent to <email>.` plus the notice |

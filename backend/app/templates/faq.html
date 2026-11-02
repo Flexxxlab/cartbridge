@@ -33,7 +33,7 @@ on your dashboard.</p>
 <p>The Free plan costs nothing. For more, <a href="{{ contact_url }}">contact us to buy</a>. See <a href="/pricing">pricing</a>.</p>
 
 <h2>My verification email did not arrive.</h2>
-<p>Verification emails can take longer than usual. For immediate access, email <a href="{{ contact_url }}">{{ support_email }}</a>.</p>
+<p>{% if email_enabled %}Check your spam folder, then log in and press “Resend verification email” (3 per hour). Still nothing? Email <a href="{{ contact_url }}">{{ support_email }}</a>.{% else %}Verification emails can take longer than usual. For immediate access, email <a href="{{ contact_url }}">{{ support_email }}</a>.{% endif %}</p>
 
 <h2>I forgot my password.</h2>
 <p>Email <a href="{{ contact_url }}">{{ support_email }}</a>.</p>

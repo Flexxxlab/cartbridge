@@ -20,6 +20,8 @@ class User(Base):
     email_verified_at: Mapped[datetime | None] = mapped_column(default=None)
     is_active: Mapped[bool] = mapped_column(default=True)
     plan: Mapped[str] = mapped_column(String(20), default="free", server_default="free")
+    # Bumped when the password changes; browser sessions carrying an older value are logged out.
+    session_version: Mapped[int] = mapped_column(default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
     api_keys: Mapped[list["ApiKey"]] = relationship(back_populates="user", cascade="all, delete-orphan")

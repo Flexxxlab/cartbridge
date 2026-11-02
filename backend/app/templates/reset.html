@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% block title %}Choose a new password · {{ app_name }}{% endblock %}
+{% block content %}<div class="card"><h1>Choose a new password</h1>{% include "_errors.html" %}
+<form method="post" action="/reset"><input type="hidden" name="csrf" value="{{ csrf }}">
+<input type="hidden" name="token" value="{{ token }}">
+<label>New password</label><input name="password" type="password" minlength="8" autocomplete="new-password" required>
+<label>Confirm new password</label><input name="password2" type="password" minlength="8" autocomplete="new-password" required>
+<button>Change password</button></form>
+<p class="muted">You will be logged out everywhere and asked to log in again.</p></div>{% endblock %}

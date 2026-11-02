@@ -167,6 +167,7 @@ def main(argv: list[str] | None = None) -> int:
                 print("Passwords must match and be at least 8 characters.", file=sys.stderr)
                 return 2
             user.password_hash = hash_password(new)
+            user.session_version += 1  # log out existing browser sessions
             db.commit()
             print(f"Password updated for {user.username}")
             return 0

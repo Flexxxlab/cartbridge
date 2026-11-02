@@ -16,6 +16,7 @@ from . import models  # noqa: F401  (registers all tables on Base)
 COLUMNS = [
     ("platform_access", "limits", "VARCHAR(200)"),
     ("users", "plan", "VARCHAR(20) NOT NULL DEFAULT 'free'"),
+    ("users", "session_version", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 

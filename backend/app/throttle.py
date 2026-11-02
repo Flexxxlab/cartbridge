@@ -1,8 +1,9 @@
-"""Per-IP throttle for signup, login and resend. Stored in the database so it survives restarts.
+"""Per-IP (and per-account / per-address) throttle for signup, login, resend, forgot and reset. Stored in the database so it survives restarts.
 
 Behind the reverse proxy the client IP comes from X-Forwarded-For (uvicorn --proxy-headers with
 --forwarded-allow-ips set to the proxy; see the Dockerfile).
 """
+import hashlib
 from datetime import timedelta
 
 from fastapi import Request
@@ -15,7 +16,9 @@ from .models import AuthAttempt, utcnow
 from .ux import throttle_message
 
 KEEP_SECONDS = 86400  # attempt rows older than this are pruned
-WHAT = {"signup": "sign-up attempts", "login": "login attempts", "resend": "verification requests"}
+WHAT = {"signup": "sign-up attempts", "login": "login attempts", "resend": "verification requests",
+        "resend_acct": "verification requests", "forgot": "password reset requests",
+        "forgot_email": "password reset requests", "reset": "password reset attempts"}
 
 
 def client_ip(request: Request) -> str:
@@ -42,6 +45,11 @@ def retry_after(db: Session, ip: str, action: str) -> int:
     db.add(AuthAttempt(ip=ip, action=action, created_at=now))
     db.commit()
     return 0
+
+
+def key_for_email(email: str) -> str:
+    """Throttle key for an address: hashed, so the table never stores it and existence is not revealed."""
+    return "em:" + hashlib.sha256(email.strip().lower().encode()).hexdigest()[:40]
 
 
 def throttled(request: Request, db: Session, action: str, render) -> HTMLResponse | None:
