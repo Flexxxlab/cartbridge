@@ -5,7 +5,8 @@
   docker exec cartbridge python -m app.send_verifications --send       really send (needs RESEND_API_KEY)
 
 Each send issues a fresh 24 h single-use link (older unused verification links stop working) and is logged
-with the user id and a masked address. Never prints tokens or the API key.
+with the user id and a masked address. Users who got a verification link in the last 24 h are skipped, so
+re-running (or restarting after a crash) never mails anyone twice; a failed send is retried on the next run. Never prints tokens or the API key.
 """
 import argparse
 import logging
@@ -33,7 +34,9 @@ def main(argv: list[str] | None = None) -> int:
     migrate(engine)
     with SessionLocal() as db:
         users = unverified_users(db)
-        print(f"{len(users)} unverified active user(s).")
+        skipped = len(unverified_users(db, skip_recent=False)) - len(users)
+        print(f"{len(users)} unverified active user(s) to mail; {skipped} skipped (got a link in the last "
+              f"{get_settings().email_token_ttl_hours} h).")
         if not a.send:
             for u in users:
                 print(f"  would send: user {u.id}  {mask_email(u.email)}")

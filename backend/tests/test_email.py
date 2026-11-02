@@ -10,7 +10,7 @@ from app import emailer
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import EmailToken, User, utcnow
-from conftest import csrf
+from conftest import confirm_verify, csrf
 
 KEY = "re_test_SECRET_do_not_log"
 PW = "s3cret-pass"
@@ -134,8 +134,12 @@ def test_signup_sends_verification_email_via_resend(client, resend):
     tok = token_from(resend[0], "/verify")
     with SessionLocal() as db:                               # only the hash is stored
         assert db.query(EmailToken).filter_by(token_hash=tok).count() == 0
-    assert "verified" in client.get(f"/verify?token={tok}").text
-    again = client.get(f"/verify?token={tok}")               # single use
+    assert client.get(f"/verify?token={tok}").status_code == 200   # GET alone (a mail scanner) uses nothing up
+    assert client.get(f"/verify?token={tok}").status_code == 200
+    with SessionLocal() as db:
+        assert db.query(User).one().email_verified_at is None
+    assert "Email verified" in confirm_verify(client, tok).text
+    again = confirm_verify(client, tok)                      # single use
     assert again.status_code == 400 and "invalid or expired" in again.text
     assert again.headers["Referrer-Policy"] == "no-referrer"
 
@@ -147,7 +151,7 @@ def test_verification_token_expires(client, resend):
         for t in db.query(EmailToken).all():
             t.expires_at = utcnow() - timedelta(seconds=1)
         db.commit()
-    assert client.get(f"/verify?token={tok}").status_code == 400
+    assert confirm_verify(client, tok).status_code == 400
     with SessionLocal() as db:
         assert db.query(User).one().email_verified_at is None
 
@@ -160,7 +164,7 @@ def test_resend_voids_older_link_and_is_limited_per_account(client, resend, monk
     assert len(resend) == 2
     new = token_from(resend[1], "/verify")
     assert client.get(f"/verify?token={old}").status_code == 400
-    assert "verified" in client.get(f"/verify?token={new}").text
+    assert "Email verified" in confirm_verify(client, new).text
 
 
 def test_resend_limit_per_account_and_ip(client, resend, monkeypatch):
@@ -184,7 +188,7 @@ def forgot(client, email):
 
 def verified_user(client, resend, name="dora"):
     signup(client, name)
-    assert "verified" in client.get(f"/verify?token={token_from(resend[-1], '/verify')}").text
+    assert "Email verified" in confirm_verify(client, token_from(resend[-1], '/verify')).text
     page = client.get("/dashboard").text
     client.post("/logout", data={"csrf": csrf(page)})
     resend.clear()
@@ -217,7 +221,7 @@ def test_reset_flow_end_to_end_invalidates_sessions_and_old_tokens(client, resen
     assert "expires in 60 minutes" in body(resend[0])["text"]
 
     assert client.get(f"/reset?token={second}").status_code == 200
-    assert client.get(f"/reset?token={first}").status_code == 400    # superseded by the newer link
+    assert client.get(f"/reset?token={first}").status_code == 200    # older link stays valid (no lockout)
     page = client.get(f"/reset?token={second}").text
     bad = client.post("/reset", data={"token": second, "password": "short", "password2": "short", "csrf": csrf(page)})
     assert bad.status_code == 400 and "8–128" in bad.text
@@ -230,6 +234,7 @@ def test_reset_flow_end_to_end_invalidates_sessions_and_old_tokens(client, resen
     assert login(client, password=PW).status_code == 400
     assert login(client, password="brand-new-pass").status_code == 303
     assert other.get("/dashboard", follow_redirects=False).status_code == 303   # old session is dead
+    assert client.get(f"/reset?token={first}").status_code == 400    # success voids the other pending link
 
 
 def test_reset_token_expires_and_is_hashed(client, resend):
@@ -287,6 +292,10 @@ def test_reset_verifies_unverified_mailbox_owner(client, resend):
 def test_send_verifications_dry_run_then_send(client, resend, capsys):
     from app import send_verifications
     signup(client, "fran")
+    with SessionLocal() as db:                               # signup mail was "long ago" (or only logged)
+        for t in db.query(EmailToken).all():
+            t.expires_at = utcnow() - timedelta(hours=1)
+        db.commit()
     resend.clear()
     assert send_verifications.main([]) == 0
     out = capsys.readouterr().out
@@ -304,3 +313,65 @@ def test_send_verifications_refuses_without_key(client, capsys):
     from app import send_verifications
     signup(client, "gil")
     assert send_verifications.main(["--send"]) == 2
+
+
+def test_verify_post_requires_csrf(client, resend):
+    signup(client)
+    tok = token_from(resend[0], "/verify")
+    assert client.post("/verify", data={"token": tok, "csrf": "bad"}).status_code == 400
+    assert "Email verified" in confirm_verify(client, tok).text
+
+
+def test_repeated_forgot_does_not_void_pending_reset_links(client, resend):
+    verified_user(client, resend)
+    forgot(client, "dora@example.com")
+    first = token_from(resend[0], "/reset")
+    forgot(client, "dora@example.com")                       # an attacker (or the user) asks again
+    second = token_from(resend[1], "/reset")
+    assert client.get(f"/reset?token={first}").status_code == 200   # the first link still works
+    assert client.get(f"/reset?token={second}").status_code == 200
+    page = client.get(f"/reset?token={first}").text
+    r = client.post("/reset", data={"token": first, "password": "brand-new-pass", "password2": "brand-new-pass",
+                                    "csrf": csrf(page)})
+    assert r.status_code == 200
+    assert client.get(f"/reset?token={second}").status_code == 400  # a successful reset voids the rest
+
+
+def test_reset_revokes_api_keys_with_notice(client, resend):
+    verified_user(client, resend)
+    login(client)
+    page = client.get("/dashboard").text
+    client.post("/keys", data={"name": "k", "csrf": csrf(page)})
+    page = client.get("/dashboard").text
+    client.post("/logout", data={"csrf": csrf(page)})
+    forgot(client, "dora@example.com")
+    tok = token_from(resend[-1], "/reset")
+    page = client.get(f"/reset?token={tok}").text
+    r = client.post("/reset", data={"token": tok, "password": "brand-new-pass", "password2": "brand-new-pass",
+                                    "csrf": csrf(page)})
+    assert "1 API key was revoked" in r.text
+    from app.models import ApiKey
+    with SessionLocal() as db:
+        assert db.query(ApiKey).filter(ApiKey.revoked_at.is_(None)).count() == 0
+
+
+def test_send_verifications_rerun_skips_recent_and_retries_failures(client, resend, monkeypatch, capsys):
+    from app import send_verifications as sv
+    monkeypatch.setattr(sv, "PAUSE_SECONDS", 0)
+    signup(client, "hal")
+    with SessionLocal() as db:                               # pretend hal's signup mail was long ago
+        for t in db.query(EmailToken).all():
+            t.expires_at = utcnow() - timedelta(hours=1)
+        db.commit()
+    resend.clear()
+    fail = {"on": True}
+    monkeypatch.setattr(emailer, "_transport", httpx.MockTransport(
+        lambda r: httpx.Response(500) if fail["on"] else (resend.append(r) or httpx.Response(200, json={}))))
+    monkeypatch.setattr(emailer.time, "sleep", lambda s: None)
+    assert sv.main(["--send"]) == 1                          # send fails
+    fail["on"] = False
+    assert sv.main(["--send"]) == 0                          # failure was retried
+    assert len(resend) == 1
+    capsys.readouterr()
+    assert sv.main(["--send"]) == 0 and len(resend) == 1     # third run: skipped, nobody mailed twice
+    assert "0 unverified active user(s) to mail; 1 skipped" in capsys.readouterr().out

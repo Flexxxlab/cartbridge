@@ -76,7 +76,7 @@ def send_email(to: str, subject: str, body: str, html: str | None = None,
         log.warning("Email not configured; email to %s not sent: %s", mask_email(to), subject)
         # Dev convenience: show the body (with links) on the console, but never on an https/production host.
         shown = body if not s.base_url.startswith("https") else mask_tokens(body)
-        print(f"\n--- EMAIL to {to} ---\n{subject}\n\n{shown}\n---------------\n", flush=True)
+        print(f"\n--- EMAIL to {mask_email(to)} ---\n{subject}\n\n{shown}\n---------------\n", flush=True)
         return False
 
     if html:  # only on the real SMTP path; the dev outbox stays plain text

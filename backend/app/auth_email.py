@@ -18,11 +18,14 @@ from .security import new_token
 log = logging.getLogger("cartbridge.email")
 
 
-def issue_token(db: Session, user: User, purpose: str, ttl: timedelta) -> tuple[str, str]:
-    """Creates a token and voids the user's older unused tokens of the same purpose. Returns (raw, hash)."""
+def issue_token(db: Session, user: User, purpose: str, ttl: timedelta, void_older: bool = True) -> tuple[str, str]:
+    """Creates a token. Returns (raw, hash). With void_older the user's older unused tokens of the same purpose
+    stop working. Reset tokens pass void_older=False: anyone could otherwise keep voiding a victim's pending
+    reset link by requesting new ones; the 1 h expiry and single use already bound them."""
     now = utcnow()
-    db.execute(update(EmailToken).where(EmailToken.user_id == user.id, EmailToken.purpose == purpose,
-                                        EmailToken.used_at.is_(None)).values(used_at=now))
+    if void_older:
+        db.execute(update(EmailToken).where(EmailToken.user_id == user.id, EmailToken.purpose == purpose,
+                                            EmailToken.used_at.is_(None)).values(used_at=now))
     raw, h = new_token()
     db.add(EmailToken(user_id=user.id, token_hash=h, purpose=purpose, expires_at=now + ttl))
     db.commit()
@@ -104,10 +107,19 @@ def send_verification_now(db: Session, user: User) -> bool:
     """Issue a fresh verification token and send it, synchronously (used by the batch script)."""
     raw, h = issue_token(db, user, "verify", timedelta(hours=get_settings().email_token_ttl_hours))
     ok = deliver_verification(user, raw, h)
+    if not ok:  # let a re-run try this user again
+        db.execute(update(EmailToken).where(EmailToken.token_hash == h).values(expires_at=utcnow()))
+        db.commit()
     log.info("verification email user_id=%s to=%s sent=%s", user.id, mask_email(user.email), ok)
     return ok
 
 
-def unverified_users(db: Session) -> list[User]:
-    return list(db.scalars(select(User).where(User.email_verified_at.is_(None), User.is_active.is_(True))
-                           .order_by(User.id)))
+def unverified_users(db: Session, skip_recent: bool = True) -> list[User]:
+    """Active unverified users. With skip_recent, users who got a verification link in the last
+    email_token_ttl_hours are left out (a token is unexpired exactly that long), so a re-run or a crash
+    followed by a re-run never mails the same person twice."""
+    q = select(User).where(User.email_verified_at.is_(None), User.is_active.is_(True))
+    if skip_recent:
+        recent = select(EmailToken.user_id).where(EmailToken.purpose == "verify", EmailToken.expires_at > utcnow())
+        q = q.where(User.id.not_in(recent))
+    return list(db.scalars(q.order_by(User.id)))

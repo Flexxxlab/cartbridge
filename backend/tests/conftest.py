@@ -25,6 +25,14 @@ def csrf(html: str) -> str:
     return re.search(r'name="csrf" value="([^"]+)"', html).group(1)
 
 
+def confirm_verify(client, token: str):
+    """GET shows a confirm page (token untouched); the POST button uses the token up."""
+    page = client.get(f"/verify?token={token}")
+    if page.status_code != 200:
+        return page
+    return client.post("/verify", data={"token": token, "csrf": csrf(page.text)})
+
+
 @pytest.fixture
 def make_user(client):
     def _make(username="alice", verify=True):
@@ -35,7 +43,7 @@ def make_user(client):
         if verify:
             body = emailer.outbox[-1].get_content()
             token = re.search(r"token=([\w-]+)", body).group(1)
-            assert "verified" in client.get(f"/verify?token={token}").text
+            assert "Email verified" in confirm_verify(client, token).text
         return username
     return _make
 

@@ -172,7 +172,17 @@ def signup(
 
 
 @router.get("/verify")
-def verify(request: Request, token: str = "", db: Session = Depends(get_db)):
+def verify_form(request: Request, token: str = "", db: Session = Depends(get_db)):
+    """Shows a confirm button; only the POST uses the token up, so mail scanners that open links can't burn it."""
+    if not _live_token(db, token, "verify"):
+        return _sensitive(render(request, "message.html", 400, title="Link invalid or expired",
+                                 message="Log in and use “Resend verification email” to get a new link."))
+    return _sensitive(render(request, "verify.html", token=token))
+
+
+@router.post("/verify")
+def verify(request: Request, token: str = Form(""), csrf: str = Form(""), db: Session = Depends(get_db)):
+    check_csrf(request, csrf)
     t = _consume_token(db, token, "verify")
     if not t:
         return _sensitive(render(request, "message.html", 400, title="Link invalid or expired",
@@ -216,7 +226,8 @@ def _reset_task(email: str) -> None:
         user = db.scalar(select(User).where(User.email == email))
         if not user or not user.is_active:
             return
-        raw, h = issue_token(db, user, "reset", timedelta(minutes=get_settings().reset_token_ttl_minutes))
+        raw, h = issue_token(db, user, "reset", timedelta(minutes=get_settings().reset_token_ttl_minutes),
+                               void_older=False)
         deliver_reset(user, raw, h)
 
 
@@ -278,10 +289,14 @@ def reset(request: Request, token: str = Form(""), password: str = Form(""), pas
         user.email_verified_at = utcnow()
     db.execute(update(EmailToken).where(EmailToken.user_id == user.id, EmailToken.used_at.is_(None))
                .values(used_at=utcnow()))  # voids other reset links and pending verification links
+    revoked = db.execute(update(ApiKey).where(ApiKey.user_id == user.id, ApiKey.revoked_at.is_(None))
+                         .values(revoked_at=utcnow())).rowcount
     db.commit()
     request.session.clear()
+    note = (f" {revoked} API key{'s were' if revoked != 1 else ' was'} revoked as a precaution: create a new one "
+            "on the dashboard and update your apps." if revoked else "")
     return render(request, "message.html", title="Password updated",
-                  message="Your password was changed and you were logged out everywhere. Log in with the new one.",
+                  message="Your password was changed and you were logged out everywhere. Log in with the new one." + note,
                   link=("/login", "Log in"))
 
 
