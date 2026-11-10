@@ -649,3 +649,12 @@ def test_home_promo_video_is_served(client):
     assert client.get("/static/cartbridge_promo_poster.jpg").status_code == 200
     r = client.get("/static/cartbridge_promo.mp4", headers={"Range": "bytes=0-99"})
     assert r.status_code == 206 and len(r.content) == 100
+
+
+def test_favicons_are_served(client):
+    for url, kind in (("/favicon.ico", "image/x-icon"), ("/favicon-32.png", "image/png"),
+                      ("/apple-touch-icon.png", "image/png"), ("/site.webmanifest", "application/manifest+json"),
+                      ("/favicon.svg", "image/svg+xml")):
+        r = client.get(url)
+        assert r.status_code == 200 and r.headers["content-type"].startswith(kind), url
+    assert 'href="/favicon.ico"' in client.get("/").text

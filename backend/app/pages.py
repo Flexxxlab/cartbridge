@@ -1,6 +1,8 @@
 """Public, indexable pages and the files crawlers and AI agents look for."""
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import PlainTextResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from . import seo
@@ -67,6 +69,29 @@ def sitemap():
 @router.get("/llms.txt")
 def llms():
     return PlainTextResponse(seo.llms_txt(), media_type="text/plain; charset=utf-8")
+
+
+_STATIC = Path(__file__).parent / "static"
+_ICON_FILES = {
+    "/favicon.ico": "image/x-icon",
+    "/favicon-32.png": "image/png",
+    "/apple-touch-icon.png": "image/png",
+    "/icon-192.png": "image/png",
+    "/icon-512.png": "image/png",
+    "/site.webmanifest": "application/manifest+json",
+}
+
+
+def _icon_route(url: str, media_type: str):
+    @router.get(url)
+    def icon():
+        return FileResponse(_STATIC / url.lstrip("/"), media_type=media_type,
+                            headers={"Cache-Control": "public, max-age=86400"})
+    return icon
+
+
+for _url, _type in _ICON_FILES.items():
+    _icon_route(_url, _type)
 
 
 @router.get("/favicon.svg")
