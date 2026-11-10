@@ -15,6 +15,8 @@ SITEMAP = [
 ]
 
 
+YOUTUBE_CHANNEL_URL = "https://www.youtube.com/@FlexxxlabApps"
+VIDEO_YOUTUBE_ID = "3vBvvGveLAo"
 VIDEO_TITLE = "CartBridge quick peek: ingredients in, a filled Walmart cart out"
 VIDEO_DESCRIPTION = ("A 33-second look at CartBridge, the Walmart cart API. Send a list of ingredients from Flutter or one REST "
                      "call and get back a Walmart add-to-cart link, with your private Walmart key kept out of the app. "
@@ -27,7 +29,8 @@ def video_jsonld() -> str:
     video = {"@context": "https://schema.org", "@type": "VideoObject", "name": VIDEO_TITLE,
              "description": VIDEO_DESCRIPTION, "thumbnailUrl": [f"{site}/static/cartbridge_promo_poster.jpg"],
              "uploadDate": "2026-11-10T00:39:13-05:00", "duration": "PT33S",
-             "contentUrl": f"{site}/static/cartbridge_promo.mp4", "url": f"{site}/video", "inLanguage": "en"}
+             "contentUrl": f"{site}/static/cartbridge_promo.mp4",
+             "embedUrl": f"https://www.youtube.com/embed/{VIDEO_YOUTUBE_ID}", "url": f"{site}/video", "inLanguage": "en"}
     return json.dumps(video, ensure_ascii=False).replace("<", "\\u003c")
 
 
@@ -36,7 +39,8 @@ def jsonld() -> str:
     s = get_settings()
     site = s.base_url.rstrip("/")
     org = {"@type": "Organization", "@id": f"{s.company_url}#org", "name": s.company_name, "url": s.company_url,
-           "email": s.support_email, "sameAs": [s.source_url]}
+           "email": s.support_email, "logo": "https://flexxxlab.com/icon-512.png",
+           "sameAs": [s.source_url, YOUTUBE_CHANNEL_URL]}
     app = {"@type": "SoftwareApplication", "@id": f"{site}/#app", "name": s.app_name, "url": f"{site}/",
            "applicationCategory": "DeveloperApplication", "operatingSystem": "Web, Android, iOS",
            "description": DEFAULT_DESCRIPTION, "license": "https://opensource.org/licenses/MIT",
@@ -120,5 +124,7 @@ await CartBridge(apiKey: 'YOUR_API_KEY').openCart(context, items: const [
 - [Terms]({site}/terms) and [Privacy]({site}/privacy)
 - [Flutter package](https://pub.dev/packages/cart_bridge)
 - [Source](https://github.com/Flexxxlab/cartbridge)
+- [Watch the 33-second video]({site}/video) and [on YouTube](https://www.youtube.com/watch?v=3vBvvGveLAo)
+- [Flexxxlab YouTube channel](https://www.youtube.com/@FlexxxlabApps)
 - Contact: {s.support_email}
 """
