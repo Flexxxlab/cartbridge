@@ -60,7 +60,14 @@ def render(request: Request, name: str, status_code: int = 200, indexable: bool 
                forgot_password=ux.forgot_password(), email_enabled=cfg.email_enabled, site_url=site, indexable=indexable,
                description=description, page_title=page_title, default_description=seo.DEFAULT_DESCRIPTION,
                canonical=site + request.url.path.rstrip("/") if indexable and request.url.path != "/" else site + "/",
-               jsonld=seo.jsonld() if indexable else "")
+               jsonld=seo.jsonld() if indexable else "",
+               breadcrumb_ld=seo.breadcrumb_jsonld(request.url.path) if indexable else "")
+    if indexable and name in ("faq.html", "home.html"):
+        items = seo.faq_items(seo.describe_free(), cfg.email_enabled, ux.contact_url(), cfg.support_email)
+        if name == "home.html":
+            keep = ("faq-what", "faq-server", "faq-account", "faq-key", "faq-limits", "faq-stores")
+            items = [i for i in items if i["id"] in keep]
+        ctx.update(faq_items=items, faq_ld=seo.faq_jsonld(items))
     return templates.TemplateResponse(request, name, ctx, status_code=status_code)
 
 

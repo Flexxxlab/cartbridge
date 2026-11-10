@@ -8,9 +8,13 @@
 <meta property="og:type" content="website"><meta property="og:site_name" content="{{ app_name }}">
 <meta property="og:title" content="{{ page_title or app_name }}"><meta property="og:description" content="{{ description or default_description }}">
 <meta property="og:url" content="{{ canonical }}">
-<meta name="twitter:card" content="summary"><meta name="twitter:title" content="{{ page_title or app_name }}">
+{% block og_image %}<meta property="og:image" content="{{ site_url }}/static/og.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:image" content="{{ site_url }}/static/og.png">{% endblock %}
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{{ page_title or app_name }}">
 <meta name="twitter:description" content="{{ description or default_description }}">
 <script type="application/ld+json">{{ jsonld|safe }}</script>
+{% if breadcrumb_ld %}<script type="application/ld+json">{{ breadcrumb_ld|safe }}</script>{% endif %}
+{% if faq_ld %}<script type="application/ld+json">{{ faq_ld|safe }}</script>{% endif %}
 {% else %}<meta name="robots" content="noindex">{% endif %}
 <link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest">
 <style>
@@ -23,7 +27,7 @@ header nav{display:flex;gap:16px;align-items:center;flex-wrap:wrap}header nav a{
 .hero h1{font-size:30px;line-height:1.2}.hero p{font-size:18px}.cta{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
 .btn.secondary{background:none;color:var(--accent);border:1px solid var(--accent)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:20px}.grid .card{margin:0}.grid .card:last-child:nth-child(odd){grid-column:1/-1}
-.prose h2{margin-top:24px}.prose p,.prose li{max-width:65ch}
+.prose h2{margin-top:24px}.prose h3{font-size:16px;margin:16px 0 6px}.prose p,.prose li{max-width:65ch}
 main{max-width:720px;margin:32px auto;padding:0 16px}
 footer{max-width:720px;margin:0 auto;padding:8px 16px 36px;text-align:center;border-top:1px solid var(--line)}
 footer p{margin:6px 0;overflow-wrap:anywhere}footer a{color:var(--accent);text-decoration:none}footer a:hover{text-decoration:underline}

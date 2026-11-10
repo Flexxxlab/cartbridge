@@ -36,4 +36,9 @@ on the server and signs requests for you.</p></div>
 <li>Send ingredients with <code>name</code>, <code>quantity</code> and <code>unit</code>.</li>
 <li>Open the returned <code>cart_url</code>. The shopper signs in and checks out on Walmart.</li></ol>
 <p><a href="/signup" class="btn">Create a free account</a></p></div>
+
+<div class="card prose"><h2>Frequently asked questions</h2>
+{% for it in faq_items %}<h3>{{ it.q }}</h3>
+<p>{{ it.html|safe }}</p>
+{% endfor %}<p><a href="/faq">More answers in the FAQ</a></p></div>
 {% endblock %}

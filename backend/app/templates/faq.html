@@ -2,44 +2,10 @@
 {% block content %}
 <div class="card prose"><h1>FAQ: Walmart cart API and grocery cart links</h1>
 
-<h2>What is a Walmart cart API?</h2>
-<p>An API that takes a shopping list and returns a Walmart cart. CartBridge matches each ingredient to a Walmart product and
-returns an add-to-cart link, so your app can send a shopper to a filled cart.</p>
-
-<h2>How do I add Walmart add to cart to a Flutter app?</h2>
-<p>Run <code>flutter pub add cart_bridge</code>, then call <code>CartBridge(apiKey: ...).openCart(context, items: ...)</code>. See
-<a href="/getting-started">Getting started</a>.</p>
-
-<h2>Do I need my own server?</h2>
-<p>No. CartBridge holds the part that signs requests with your Walmart key and talks to Walmart.</p>
-
-<h2>Do I need a Walmart account?</h2>
-<p>Yes. You bring your own Walmart Affiliate API credentials from <a href="https://walmart.io" rel="noopener">walmart.io</a>. Walmart
-applies its own terms and quotas to them.</p>
-
-<h2>What is a grocery cart link?</h2>
-<p>A URL such as <code>https://affil.walmart.com/cart/addToCart?items=ITEMID|QTY,...</code>. Opening it adds the items to the shopper's
-Walmart cart. They sign in and check out on Walmart.</p>
-
-<h2>Is my Walmart private key safe?</h2>
-<p>It is stored encrypted, never shown again after you save it, and never sent to your app. Your app holds a CartBridge key that
-you can revoke at any time without touching your Walmart key.</p>
-
-<h2>What are the limits?</h2>
-<p>Free plan: {{ free_text }} Past a limit the API returns HTTP 429 with a <code>Retry-After</code> header. You can set stricter limits
-on your dashboard.</p>
-
-<h2>How much does it cost?</h2>
-<p>The Free plan costs nothing. For more, <a href="{{ contact_url }}">contact us to buy</a>. See <a href="/pricing">pricing</a>.</p>
-
-<h2>My verification email did not arrive.</h2>
-<p>{% if email_enabled %}Check your spam folder, then log in and press “Resend verification email” (3 per hour). Still nothing? Email <a href="{{ contact_url }}">{{ support_email }}</a>.{% else %}Verification emails can take longer than usual. For immediate access, email <a href="{{ contact_url }}">{{ support_email }}</a>.{% endif %}</p>
-
-<h2>I forgot my password.</h2>
-<p>Email <a href="{{ contact_url }}">{{ support_email }}</a>.</p>
-
-<h2>Which stores are supported?</h2>
-<p>Walmart today. <a href="/contact">Tell us</a> which store you need next.</p>
+{% for it in faq_items %}
+<h2>{{ it.q }}</h2>
+<p>{{ it.html|safe }}</p>
+{% endfor %}
 <div class="cta"><a class="btn" href="/signup">Get started</a><a class="btn secondary" href="/contact">Contact</a></div>
 </div>
 {% endblock %}
