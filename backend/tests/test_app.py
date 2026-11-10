@@ -640,3 +640,12 @@ def test_admin_by_email_unlisted_refused(client, make_user, monkeypatch):
     monkeypatch.setattr(get_settings(), "admin_usernames", "other@example.com")
     make_user("carol")
     assert client.get("/admin").status_code == 404
+
+
+def test_home_promo_video_is_served(client):
+    html = client.get("/").text
+    assert 'data-promo-player' in html and 'preload="none"' in html and "autoplay" not in html
+    assert client.get("/static/promo-video.js").status_code == 200
+    assert client.get("/static/cartbridge_promo_poster.jpg").status_code == 200
+    r = client.get("/static/cartbridge_promo.mp4", headers={"Range": "bytes=0-99"})
+    assert r.status_code == 206 and len(r.content) == 100

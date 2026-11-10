@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% block head %}<link rel="stylesheet" href="/static/promo-video.css">
+<script src="/static/promo-video.js" defer></script>{% endblock %}
 {% block content %}
 <section class="hero card">
 <h1>Walmart cart API for your app</h1>
@@ -8,6 +10,11 @@ add-to-cart link. Use the Flutter package or one REST call. No backend to build,
 <a href="/getting-started">Read the docs</a></div>
 <p class="muted">Free plan: bring your own Walmart key. {{ free_text }}</p>
 </section>
+
+<figure class="promo-player" data-promo-player data-src="/static/cartbridge_promo.mp4" data-ratio="1.7778" data-title="CartBridge quick peek video">
+<div class="promo-frame"><video class="promo-video" poster="/static/cartbridge_promo_poster.jpg" muted loop playsinline preload="none" aria-label="CartBridge quick peek, silent preview"></video>
+<button class="promo-open" type="button" aria-label="Play the CartBridge video with sound and controls"><span class="promo-play"><i></i>Quick peek &middot; 33 s &middot; play with sound</span></button>
+<button class="promo-mute" type="button" aria-label="Turn sound on"></button></div></figure>
 
 <div class="grid">
 <div class="card"><h2>Flutter Walmart add to cart</h2>

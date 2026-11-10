@@ -1,8 +1,10 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from . import api, pages, web
@@ -50,6 +52,8 @@ app.add_middleware(
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET", "POST"],
                    allow_headers=["Authorization", "X-API-Key", "Content-Type"])
 
+# Landing-page promo video and its player (backend/app/static).
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 app.include_router(api.router)
 app.include_router(pages.router)
 app.include_router(web.router)
