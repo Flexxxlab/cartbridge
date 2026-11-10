@@ -26,6 +26,9 @@ PAGES = {
     "/pricing": ("pricing.html", "Pricing: free Walmart cart API plan | CartBridge",
                  "CartBridge is free with your own Walmart key: 10 requests per 5 minutes and 200 per calendar month. "
                  "Need more? Contact us to buy."),
+    "/video": ("video.html", "Video: CartBridge Walmart cart API in 33 seconds | CartBridge",
+               "A 33-second video of CartBridge: send ingredients from Flutter or REST and get a Walmart add-to-cart "
+               "link back, with your Walmart key kept off the device."),
     "/contact": ("contact.html", "Contact CartBridge | helpdesk@flexxxlab.com",
                  "Contact CartBridge for help, account verification, another store, or a plan with higher limits."),
     "/terms": ("terms.html", "Terms of Service | CartBridge", "The terms for using the CartBridge website and API."),
@@ -36,7 +39,8 @@ PAGES = {
 
 def _make(path: str, template: str, title: str, description: str):
     def view(request: Request):
-        ctx = {"free": PLANS["free"], "free_text": seo.describe_free()}
+        ctx = {"free": PLANS["free"], "free_text": seo.describe_free(), "video_ld": seo.video_jsonld(),
+               "video_title": seo.VIDEO_TITLE, "video_description": seo.VIDEO_DESCRIPTION}
         return render(request, template, indexable=True, page_title=title, description=description, **ctx)
     view.__name__ = "page" + path.replace("/", "_").replace("-", "_")
     router.add_api_route(path, view, methods=["GET"])
@@ -50,7 +54,7 @@ for _path, (_t, _title, _desc) in PAGES.items():
 def home(request: Request, db: Session = Depends(get_db)):
     if current_user(request, db):
         return RedirectResponse("/dashboard", status_code=303)
-    return render(request, "home.html", indexable=True, free_text=seo.describe_free(),
+    return render(request, "home.html", indexable=True, free_text=seo.describe_free(), video_ld=seo.video_jsonld(),
                   page_title="Walmart cart API for Flutter and REST | CartBridge",
                   description="Walmart cart API: send ingredients, get a Walmart add-to-cart link. Flutter package "
                               "and REST API. Free plan with your own Walmart key, no backend to build.")

@@ -11,8 +11,24 @@ DEFAULT_DESCRIPTION = ("CartBridge is a Walmart cart API: send a list of ingredi
 SITEMAP = [
     ("/", "weekly", "1.0"), ("/features", "monthly", "0.8"), ("/getting-started", "monthly", "0.9"),
     ("/faq", "monthly", "0.7"), ("/pricing", "monthly", "0.8"), ("/signup", "monthly", "0.6"),
-    ("/contact", "yearly", "0.4"), ("/terms", "yearly", "0.3"), ("/privacy", "yearly", "0.3"),
+    ("/video", "monthly", "0.6"), ("/contact", "yearly", "0.4"), ("/terms", "yearly", "0.3"), ("/privacy", "yearly", "0.3"),
 ]
+
+
+VIDEO_TITLE = "CartBridge quick peek: ingredients in, a filled Walmart cart out"
+VIDEO_DESCRIPTION = ("A 33-second look at CartBridge, the Walmart cart API. Send a list of ingredients from Flutter or one REST "
+                     "call and get back a Walmart add-to-cart link, with your private Walmart key kept out of the app. "
+                     "See it filling the cart inside PressPot.")
+
+
+def video_jsonld() -> str:
+    """VideoObject for the promo video (duration measured with ffprobe: 33.13 s), safe inside a <script> tag."""
+    site = get_settings().base_url.rstrip("/")
+    video = {"@context": "https://schema.org", "@type": "VideoObject", "name": VIDEO_TITLE,
+             "description": VIDEO_DESCRIPTION, "thumbnailUrl": [f"{site}/static/cartbridge_promo_poster.jpg"],
+             "uploadDate": "2026-11-10T00:39:13-05:00", "duration": "PT33S",
+             "contentUrl": f"{site}/static/cartbridge_promo.mp4", "url": f"{site}/video", "inLanguage": "en"}
+    return json.dumps(video, ensure_ascii=False).replace("<", "\\u003c")
 
 
 def jsonld() -> str:

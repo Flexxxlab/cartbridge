@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block head %}<meta property="og:video" content="{{ site_url }}/static/cartbridge_promo.mp4">
+<meta property="og:video:secure_url" content="{{ site_url }}/static/cartbridge_promo.mp4">
+<meta property="og:video:type" content="video/mp4"><meta property="og:video:width" content="1920"><meta property="og:video:height" content="1080">
+<meta property="og:image" content="{{ site_url }}/static/cartbridge_promo_poster.jpg"><meta name="twitter:image" content="{{ site_url }}/static/cartbridge_promo_poster.jpg">
+<script type="application/ld+json">{{ video_ld|safe }}</script>
+<style>.watch-video{display:block;width:100%;aspect-ratio:16/9;background:#000;border-radius:12px;border:1px solid var(--line)}</style>{% endblock %}
+{% block content %}
+<video class="watch-video" controls playsinline preload="metadata" poster="/static/cartbridge_promo_poster.jpg" src="/static/cartbridge_promo.mp4" aria-label="CartBridge quick peek video"></video>
+<div class="card prose" style="margin-top:20px"><h1>{{ video_title }}</h1>
+<p>{{ video_description }}</p>
+<p><a href="/">Back to the CartBridge home page</a> &middot; <a href="/getting-started">Read the docs</a></p></div>
+{% endblock %}

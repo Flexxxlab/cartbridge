@@ -589,6 +589,21 @@ def test_robots_sitemap_llms(client):
     assert "helpdesk@flexxxlab.com" in llms.text and client.get("/favicon.svg").status_code == 200
 
 
+def test_video_page_and_videoobject(client):
+    import json, re
+    assert "<loc>http://testserver/video</loc>" in client.get("/sitemap.xml").text
+    for path in ("/", "/video"):
+        html = client.get(path).text
+        blocks = [json.loads(b) for b in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)]
+        video = next(b for b in blocks if b.get("@type") == "VideoObject")
+        assert video["duration"] == "PT33S" and video["contentUrl"].endswith("/static/cartbridge_promo.mp4")
+        assert video["thumbnailUrl"][0].startswith("http") and video["uploadDate"].endswith("-05:00")
+    page = client.get("/video").text
+    assert '<video class="watch-video" controls' in page and 'rel="canonical" href="http://testserver/video"' in page
+    assert 'property="og:video"' in page
+    assert client.get("/static/cartbridge_promo.mp4").status_code == 200
+
+
 def test_home_redirects_logged_in_user(client, make_user):
     make_user("ivy")
     assert client.get("/", follow_redirects=False).headers["location"] == "/dashboard"
