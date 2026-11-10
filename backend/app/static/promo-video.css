@@ -51,37 +51,33 @@
 }
 .promo-play {
   position: absolute;
-  left: 14px;
-  bottom: 14px;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 16px 7px 7px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.66);
-  color: #fff;
-  font: 600 14px/1 var(--pv-font);
-  letter-spacing: 0;
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
-  transition: transform 0.15s ease;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  font-size: 0; /* label lives in the button's aria-label; the circle is the visible control */
+  line-height: 0;
+  pointer-events: none;
 }
 .promo-play i {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   background: var(--pv-accent);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease;
 }
 .promo-play i::after {
   content: "";
-  margin-left: 3px;
-  border-left: 11px solid var(--pv-accent-fg);
-  border-top: 7px solid transparent;
-  border-bottom: 7px solid transparent;
+  margin-left: 5px;
+  border-left: 20px solid var(--pv-accent-fg);
+  border-top: 12px solid transparent;
+  border-bottom: 12px solid transparent;
 }
-.promo-open:hover .promo-play { transform: scale(1.04); }
+.promo-open:hover .promo-play i { transform: scale(1.06); }
 .promo-mute {
   position: absolute;
   right: 64px;
@@ -164,12 +160,13 @@
 }
 .promo-frame:-webkit-full-screen .promo-video { object-fit: contain; }
 @media (max-width: 520px) {
-  .promo-play { left: 10px; bottom: 10px; font-size: 13px; }
+  .promo-play i { width: 56px; height: 56px; }
+  .promo-play i::after { border-left-width: 17px; border-top-width: 10px; border-bottom-width: 10px; }
   .promo-mute { right: 56px; bottom: 8px; }
   .promo-expand { right: 8px; bottom: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .promo-play { transition: none; }
+  .promo-play i { transition: none; }
 }
 
 /* CartBridge theme (follows base.html variables, light and dark) */
