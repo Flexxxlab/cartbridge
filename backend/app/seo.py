@@ -18,6 +18,12 @@ SITEMAP = [
 
 
 YOUTUBE_CHANNEL_URL = "https://www.youtube.com/@FlexxxlabApps"
+PUB_URL = "https://pub.dev/packages/cart_bridge"
+ORG_ID = "https://flexxxlab.com/#organization"
+ORG_SAME_AS = ["https://github.com/flexxxlab", YOUTUBE_CHANNEL_URL,
+               "https://apps.apple.com/us/developer/flexxxlab/id1793211587",
+               "https://play.google.com/store/apps/developer?id=flexxxlab",
+               "https://pub.dev/publishers/flexxxlab.com"]
 VIDEO_YOUTUBE_ID = "3vBvvGveLAo"
 VIDEO_TITLE = "CartBridge quick peek: ingredients in, a filled Walmart cart out"
 VIDEO_DESCRIPTION = ("A 33-second look at CartBridge, the Walmart cart API. Send a list of ingredients from Flutter or one REST "
@@ -40,13 +46,14 @@ def jsonld() -> str:
     """SoftwareApplication + Organization, safe to embed in a <script> tag."""
     s = get_settings()
     site = s.base_url.rstrip("/")
-    org = {"@type": "Organization", "@id": f"{s.company_url}#org", "name": s.company_name, "url": s.company_url,
-           "email": s.support_email, "logo": "https://flexxxlab.com/icon-512.png",
-           "sameAs": [s.source_url, YOUTUBE_CHANNEL_URL]}
+    # One shared company entity for every Flexxxlab profile and product (see ~/HQ discoverability entity-linking).
+    org = {"@type": "Organization", "@id": ORG_ID, "name": "Flexxxlab", "url": "https://flexxxlab.com/",
+           "logo": "https://flexxxlab.com/icon-512.png", "sameAs": ORG_SAME_AS}
     app = {"@type": "SoftwareApplication", "@id": f"{site}/#app", "name": s.app_name, "url": f"{site}/",
            "applicationCategory": "DeveloperApplication", "operatingSystem": "Web, Android, iOS",
            "description": DEFAULT_DESCRIPTION, "license": "https://opensource.org/licenses/MIT",
-           "publisher": {"@id": org["@id"]},
+           "publisher": {"@id": ORG_ID, "@type": "Organization", "name": "Flexxxlab", "url": "https://flexxxlab.com/"},
+           "sameAs": [PUB_URL, s.source_url], "downloadUrl": PUB_URL, "installUrl": PUB_URL,
            "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD", "name": "Free plan",
                       "description": f"Bring your own Walmart key. {describe_free()}"}}
     return json.dumps({"@context": "https://schema.org", "@graph": [app, org]}, ensure_ascii=False).replace("<", "\\u003c")
