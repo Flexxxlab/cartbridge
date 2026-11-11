@@ -53,3 +53,7 @@ Shared instructions live in this file. Shared playbooks live in `~/HQ/playbooks/
 
 - Never modify another tool's config to make your own task work; tell the owner instead.
 - When changing a shared playbook, check the wrappers that reference it.
+
+## Shared memory
+Persistent notes live in `docs/agent/memory.md`. Read it at session start. When the owner says "remember X", append a dated bullet there, not to tool-private memory.
+
