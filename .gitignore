@@ -24,7 +24,6 @@ walmart_key*
 *.sqlite3
 
 # --- Internal notes / assistant context (keep private) ---
-CLAUDE.md
 .claude/
 docs/PRESSPOT_INTEGRATION.md
 
