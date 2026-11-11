@@ -18,6 +18,15 @@ from .security import new_token
 log = logging.getLogger("cartbridge.email")
 
 
+def send_existing_account_email(user: User) -> None:
+    """Placeholder: notify the existing account owner that a signup attempt was made.
+    In production this would send an email informing them they already have an account.
+    """
+    # Simple log for now; actual email sending can be added later.
+    log.info(f"Signup attempt for existing email {user.email} (user id {user.id})")
+
+
+
 def issue_token(db: Session, user: User, purpose: str, ttl: timedelta, void_older: bool = True) -> tuple[str, str]:
     """Creates a token. Returns (raw, hash). With void_older the user's older unused tokens of the same purpose
     stop working. Reset tokens pass void_older=False: anyone could otherwise keep voiding a victim's pending

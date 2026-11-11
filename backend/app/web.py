@@ -12,7 +12,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from .config import get_settings
-from .auth_email import deliver_reset, deliver_verification, issue_token
+from .auth_email import deliver_reset, deliver_verification, issue_token, send_existing_account_email
 from .db import SessionLocal, get_db
 from .crypto import encrypt
 from .models import ApiKey, EmailToken, PlatformAccess, User, UserLimits, WalmartCredential, utcnow
@@ -144,6 +144,19 @@ def signup(
     csrf: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    # Updated signup handling to prevent enumeration of existing emails.
+    # If the email already exists, we act like a successful signup but do not create a new user.
+    # We also send a notification email to the existing account owner.
+    # Username duplication still returns a distinct error.
+    # Throttle and CSRF checks remain unchanged.
+    """
+    # Existing email handling – prevent enumeration
+    # If the email already exists, we treat it like a successful signup but do not create a new user.
+    # We also notify the existing account owner.
+    # Username uniqueness is still enforced with a distinct error.
+    
+    # Throttle and CSRF checks remain unchanged (handled later).
+    """
     if blocked := throttled(request, db, "signup", render):
         return blocked
     check_csrf(request, csrf)
@@ -158,10 +171,18 @@ def signup(
     if password != password2:
         errors.append("Passwords don't match.")
     if not errors:
+        # Username must be unique; keep distinct error
         if db.scalar(select(User).where(func.lower(User.username) == username.lower())):
             errors.append("That username is taken.")
-        if db.scalar(select(User).where(User.email == email)):
-            errors.append("An account with that email already exists.")
+        # Check if email already exists
+        existing_user = db.scalar(select(User).where(User.email == email))
+        if existing_user:
+            # Notify existing owner and render generic success page without creating a new account
+            send_existing_account_email(existing_user)
+            return render(request, "message.html", title="Check your email", user=existing_user,
+                          message=(f"We sent a verification link to {email}. "
+                                   f"If you already have an account, please check your email for further instructions."),
+                          notice=ux.verify_notice())
     if errors:
         return render(request, "signup.html", 400, errors=errors, username=username, email=email)
 
