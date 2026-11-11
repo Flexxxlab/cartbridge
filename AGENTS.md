@@ -42,3 +42,14 @@ Ingredient list + store → filled store cart. Walmart is the first store.
 - Run: `uvicorn app.main:app --reload` (in backend/). Test: `cd backend && pytest`. Pre-commit secret hook in `.githooks`.
 - Git: Flexxxlab/cartbridge, `main`. Live at cartbridge.flexxxlab.com (per developer-context.md; deploy: `~/HQ/bin/publish cartbridge`, wraps `~/HQ/bin/deploy/cartbridge.sh`). Status: very active.
 - Landing promo video (2026-11-09, local branch feat/promo-videos): `backend/app/static/` (mounted at `/static`: `promo-video.{js,css}`, `cartbridge_promo.mp4` + poster, copy of `~/Developer/portfolio/media/videos/cartbridge/out/`), markup in `templates/home.html` via the new `{% block head %}` in `base.html`. Ships in the Docker image (`COPY app`); no deploy change.
+
+## Tool-specific config (don't edit unless asked)
+Shared instructions live in this file. Shared playbooks live in `~/HQ/playbooks/`.
+
+| Tool | Location | Contains |
+|---|---|---|
+| Claude Code | `~/HQ/.claude/` | skill wrappers |
+| Antigravity CLI | `~/HQ/.agents/` | skill wrappers |
+
+- Never modify another tool's config to make your own task work; tell the owner instead.
+- When changing a shared playbook, check the wrappers that reference it.
