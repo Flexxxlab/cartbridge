@@ -1,7 +1,8 @@
 name: cart_bridge
 description: Turn a list of ingredients into a filled store cart (Walmart first) and open it in a WebView or the store's app.
 version: 0.1.0
-repository: https://github.com/Flexxxlab/cartbridge/tree/main/flutter/cart_bridge
+homepage: https://cartbridge.flexxxlab.com
+repository: https://github.com/Flexxxlab/cartbridge
 issue_tracker: https://github.com/Flexxxlab/cartbridge/issues
 topics:
   - shopping
