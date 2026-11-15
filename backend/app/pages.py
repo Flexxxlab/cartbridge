@@ -39,8 +39,10 @@ PAGES = {
 
 def _make(path: str, template: str, title: str, description: str):
     def view(request: Request):
-        ctx = {"free": PLANS["free"], "free_text": seo.describe_free(), "video_ld": seo.video_jsonld(),
+        ctx = {"free": PLANS["free"], "free_text": seo.describe_free(),
                "video_title": seo.VIDEO_TITLE, "video_description": seo.VIDEO_DESCRIPTION}
+        if path == "/video":
+            ctx["video_ld"] = seo.video_jsonld()
         return render(request, template, indexable=True, page_title=title, description=description, **ctx)
     view.__name__ = "page" + path.replace("/", "_").replace("-", "_")
     router.add_api_route(path, view, methods=["GET"])
@@ -54,7 +56,7 @@ for _path, (_t, _title, _desc) in PAGES.items():
 def home(request: Request, db: Session = Depends(get_db)):
     if current_user(request, db):
         return RedirectResponse("/dashboard", status_code=303)
-    return render(request, "home.html", indexable=True, free_text=seo.describe_free(), video_ld=seo.video_jsonld(),
+    return render(request, "home.html", indexable=True, free_text=seo.describe_free(),
                   page_title="Walmart cart API for Flutter and REST | CartBridge",
                   description="Walmart cart API: send ingredients, get a Walmart add-to-cart link. Flutter package "
                               "and REST API. Free plan with your own Walmart key, no backend to build.")

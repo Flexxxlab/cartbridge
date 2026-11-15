@@ -592,15 +592,18 @@ def test_robots_sitemap_llms(client):
 def test_video_page_and_videoobject(client):
     import json, re
     assert "<loc>http://testserver/video</loc>" in client.get("/sitemap.xml").text
-    for path in ("/", "/video"):
-        html = client.get(path).text
-        blocks = [json.loads(b) for b in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)]
-        video = next(b for b in blocks if b.get("@type") == "VideoObject")
-        assert video["duration"] == "PT33S" and video["contentUrl"].endswith("/static/cartbridge_promo.mp4")
-        assert video["thumbnailUrl"][0].startswith("http") and video["uploadDate"].endswith("-05:00")
-    page = client.get("/video").text
-    assert '<video class="watch-video" controls' in page and 'rel="canonical" href="http://testserver/video"' in page
-    assert 'property="og:video"' in page
+    home_html = client.get("/").text
+    home_blocks = [json.loads(b) for b in re.findall(r'<script type="application/ld\+json">(.*?)</script>', home_html, re.S)]
+    assert not any(b.get("@type") == "VideoObject" for b in home_blocks)
+    assert "data-nosnippet" in home_html
+
+    video_html = client.get("/video").text
+    video_blocks = [json.loads(b) for b in re.findall(r'<script type="application/ld\+json">(.*?)</script>', video_html, re.S)]
+    video = next(b for b in video_blocks if b.get("@type") == "VideoObject")
+    assert video["duration"] == "PT33S" and video["contentUrl"].endswith("/static/cartbridge_promo.mp4")
+    assert video["thumbnailUrl"][0].startswith("http") and video["uploadDate"].endswith("-05:00")
+    assert '<video class="watch-video" controls' in video_html and 'rel="canonical" href="http://testserver/video"' in video_html
+    assert 'property="og:video"' in video_html
     assert client.get("/static/cartbridge_promo.mp4").status_code == 200
 
 
