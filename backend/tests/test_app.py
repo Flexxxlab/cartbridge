@@ -586,6 +586,8 @@ def test_robots_sitemap_llms(client):
         assert f"<loc>http://testserver{p}</loc>" in sm.text
     llms = client.get("/llms.txt")
     assert llms.status_code == 200 and "/v1/cart" in llms.text and "cart_bridge" in llms.text
+    assert llms.headers.get("x-robots-tag") == "noindex"
+    assert "text/plain" in llms.headers.get("content-type", "")
     assert "helpdesk@flexxxlab.com" in llms.text and client.get("/favicon.svg").status_code == 200
 
 
@@ -605,6 +607,46 @@ def test_video_page_and_videoobject(client):
     assert '<video class="watch-video" controls' in video_html and 'rel="canonical" href="http://testserver/video"' in video_html
     assert 'property="og:video"' in video_html
     assert client.get("/static/cartbridge_promo.mp4").status_code == 200
+
+
+def test_website_kit_llms_and_404_handler(client):
+    # 1. GET /llms.txt returns 200 text/plain with header x-robots-tag: noindex
+    llms = client.get("/llms.txt")
+    assert llms.status_code == 200
+    assert "text/plain" in llms.headers.get("content-type", "")
+    assert llms.headers.get("x-robots-tag") == "noindex"
+
+    # 2. GET /nope-404-probe with Accept: text/html returns 404 HTML containing "Page not found" and "<!doctype html>"
+    probe = client.get("/nope-404-probe", headers={"accept": "text/html,application/xhtml+xml"})
+    assert probe.status_code == 404
+    assert "text/html" in probe.headers.get("content-type", "")
+    assert "<!doctype html>" in probe.text.lower()
+    assert "Page not found" in probe.text
+    assert '<meta name="robots" content="noindex">' in probe.text
+    assert 'href="/"' in probe.text
+    assert 'href="/getting-started"' in probe.text
+
+    # 3. API 404 routes still return JSON {"detail": ...}
+    api_probe = client.get("/v1/nonexistent")
+    assert api_probe.status_code == 404
+    assert "application/json" in api_probe.headers.get("content-type", "")
+    assert "detail" in api_probe.json()
+
+    api_probe_with_html_accept = client.get("/v1/nonexistent", headers={"accept": "text/html"})
+    assert api_probe_with_html_accept.status_code == 404
+    assert "application/json" in api_probe_with_html_accept.headers.get("content-type", "")
+    assert "detail" in api_probe_with_html_accept.json()
+
+    api2 = client.get("/api/unknown")
+    assert api2.status_code == 404
+    assert "application/json" in api2.headers.get("content-type", "")
+    assert "detail" in api2.json()
+
+    # Non-API 404 without text/html in Accept returns JSON detail
+    probe_json = client.get("/nope-404-probe", headers={"accept": "application/json"})
+    assert probe_json.status_code == 404
+    assert "application/json" in probe_json.headers.get("content-type", "")
+    assert "detail" in probe_json.json()
 
 
 def test_home_redirects_logged_in_user(client, make_user):

@@ -74,7 +74,8 @@ def sitemap():
 
 @router.get("/llms.txt")
 def llms():
-    return PlainTextResponse(seo.llms_txt(), media_type="text/plain; charset=utf-8")
+    return PlainTextResponse(seo.llms_txt(), media_type="text/plain; charset=utf-8",
+                             headers={"X-Robots-Tag": "noindex"})
 
 
 _STATIC = Path(__file__).parent / "static"

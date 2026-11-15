@@ -2,8 +2,9 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -57,6 +58,18 @@ app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), na
 app.include_router(api.router)
 app.include_router(pages.router)
 app.include_router(web.router)
+
+
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc: Exception):
+    detail = getattr(exc, "detail", "Not Found")
+    path = request.url.path
+    accept = request.headers.get("accept", "")
+    if path.startswith(("/v1/", "/v1", "/api/", "/api")) or "text/html" not in accept:
+        return JSONResponse(status_code=404, content={"detail": detail})
+    return web.render(request, "404.html", status_code=404, indexable=False,
+                      page_title=f"Page not found | {settings.app_name}",
+                      description="The requested page could not be found.")
 
 
 @app.get("/healthz", include_in_schema=False)

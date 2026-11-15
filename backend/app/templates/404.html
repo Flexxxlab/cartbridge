@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Page not found · {{ app_name }}{% endblock %}
+{% block content %}
+<div class="card hero">
+  <h1>Page not found</h1>
+  <p>The page you are looking for doesn't exist, has been moved, or is temporarily unavailable.</p>
+  <div class="cta">
+    <a class="btn" href="/">Return home</a>
+    <a class="btn secondary" href="/getting-started">Documentation</a>
+  </div>
+</div>
+{% endblock %}
