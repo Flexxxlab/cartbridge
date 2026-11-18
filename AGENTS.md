@@ -18,6 +18,7 @@ Ingredient list + store → filled store cart. Walmart is the first store.
 - No key configured: tokens are logged; the notice "Verification emails can take longer than usual. For immediate access, email helpdesk@flexxxlab.com." is shown. Owner verifies by hand: `/admin` Verify button or `python -m app.admin verify <user|email>`.
 - Shared strings/page template for Duck: `docs/self-serve-ux.md` (source in `app/ux.py`). Public pages + SEO files in `app/pages.py`, `app/seo.py`, templates.
 - Migrations: no Alembic; `python -m app.migrate` (idempotent, also run at startup). Back up first: `deploy/backup-sqlite.sh`, `deploy/restore-test.sh`.
+- Anti-bot signup (2026-11-18, SEC-033, deployed): `app/antibot.py` - hidden honeypot field `website`, HMAC-signed `ts` form timestamp (min `SIGNUP_MIN_SECONDS`=3, max 2 h), disposable-domain blocklist; bad submissions get the normal "check your email" page with no user/email. Tests post `**ab(page)` (conftest sets min 0). `python -m app.admin prune-unverified --older-than-hours N [--yes]` (dry run default; unverified, 0 keys, no platform grant).
 - Admin CLI: `users`, `keys`, `verify`, `plan`, `move-key`, `delete-user --yes` (SQLite doesn't enforce cascades; delete-user removes children by hand).
 - Lighthouse (local): SEO 100 on /, /features, /getting-started, /faq; accessibility 91-92.
 - Still open: SMTP, Stripe, prod runbooks not yet run, smoke users + PressPot move, off-server backup copy, legal review of terms/privacy text.
