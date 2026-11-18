@@ -20,7 +20,7 @@ from .plans import PLANS, get_plan
 from .providers import walmart_source
 from .ratelimit import (MAX_COUNT, WINDOW_CHOICES, ceiling_for, chosen_for, default_chosen, describe_window,
                         limits_for, monthly_limit_for, parse_limits, plan_name_for, usage_for, describe_plan)
-from .throttle import key_for_email, retry_after, throttled, WHAT
+from .throttle import client_ip, key_for_email, retry_after, throttled, WHAT
 from . import antibot, seo, ux
 from .stores import WalmartAffiliateProvider
 from .stores.base import StoreError
@@ -58,6 +58,7 @@ def render(request: Request, name: str, status_code: int = 200, indexable: bool 
                source_url=cfg.source_url, year=utcnow().year, contact_url=ux.contact_url(),
                contact_to_buy=ux.CONTACT_TO_BUY, verify_notice=ux.verify_notice(),
                forgot_password=ux.forgot_password(), email_enabled=cfg.email_enabled, site_url=site, indexable=indexable,
+               turnstile_site_key=cfg.turnstile_site_key if antibot.turnstile_enabled() else None,
                description=description, page_title=page_title, default_description=seo.DEFAULT_DESCRIPTION,
                canonical=site + request.url.path.rstrip("/") if indexable and request.url.path != "/" else site + "/",
                jsonld=seo.jsonld() if indexable else "",
@@ -144,6 +145,7 @@ def signup(
     csrf: str = Form(""),
     website: str = Form(""),   # honeypot: hidden from people, bots fill it
     ts: str = Form(""),        # signed render time
+    cf_token: str = Form("", alias="cf-turnstile-response"),
     db: Session = Depends(get_db),
 ):
     # Updated signup handling to prevent enumeration of existing emails.
@@ -169,6 +171,9 @@ def signup(
                       message=f"We sent a verification link to {email}. "
                               "If you already have an account, please check your email for further instructions.",
                       notice=ux.verify_notice())
+    if antibot.turnstile_enabled() and not antibot.turnstile_ok(cf_token, client_ip(request)):
+        return render(request, "signup.html", 400, username=username, email=email, form_ts=antibot.sign_timestamp(),
+                      errors=["Please complete the check below and try again."])
     errors = []
     if not USERNAME_RE.match(username):
         errors.append("Username must be 3–32 characters: letters, numbers, underscore.")

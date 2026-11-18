@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./cartbridge.db"
     # Sign-up forms submitted faster than this (seconds after render) are treated as bots.
     signup_min_seconds: int = 3
+    # Cloudflare Turnstile on sign-up. Check is skipped when the secret is unset (dev/tests).
+    turnstile_site_key: str | None = None
+    turnstile_secret_key: str | None = None
 
     # SMTP. If smtp_host is empty, emails are printed to the console (dev mode).
     smtp_host: str | None = None

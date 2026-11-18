@@ -3,6 +3,8 @@ import hashlib
 import hmac
 import time
 
+import httpx
+
 from .config import get_settings
 
 MIN_SECONDS = 3          # a human can't fill the form faster
@@ -47,3 +49,25 @@ def looks_like_bot(honeypot: str, ts: str, now: float | None = None) -> bool:
 def disposable(email: str) -> bool:
     domain = email.rsplit("@", 1)[-1].lower().strip(".")
     return any(domain == d or domain.endswith("." + d) for d in DISPOSABLE_DOMAINS)
+
+
+TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+
+def turnstile_enabled() -> bool:
+    cfg = get_settings()
+    return bool(cfg.turnstile_secret_key and cfg.turnstile_site_key)
+
+
+def turnstile_ok(token: str, ip: str | None = None) -> bool:
+    """Verify a Turnstile token with Cloudflare. Fails closed on a missing token or any network error."""
+    if not token:
+        return False
+    data = {"secret": get_settings().turnstile_secret_key, "response": token}
+    if ip:
+        data["remoteip"] = ip
+    try:
+        r = httpx.post(TURNSTILE_VERIFY_URL, data=data, timeout=5)
+        return r.status_code == 200 and r.json().get("success") is True
+    except (httpx.HTTPError, ValueError):
+        return False
