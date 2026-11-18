@@ -13,9 +13,13 @@
                                             the key itself is unchanged, so clients keep working
   delete-user <username> --yes [--force]    delete the account and everything it owns (irreversible);
                                             refuses if it owns a platform grant or active key unless --force
+  prune-unverified --older-than-hours N [--yes]
+                                            delete never-verified accounts with no API keys older than N hours
+                                            (dry run listing without --yes)
 """
 import argparse
 import sys
+from datetime import timedelta
 
 from sqlalchemy import delete, func, select
 
@@ -98,6 +102,28 @@ def _delete_user(db, user: User, confirmed: bool, force: bool = False) -> int:
     return 0
 
 
+def _prune_unverified(db, hours: float, confirmed: bool) -> int:
+    cutoff = utcnow() - timedelta(hours=hours)
+    key_owners = select(ApiKey.user_id)
+    users = db.scalars(select(User).where(User.email_verified_at.is_(None), User.created_at < cutoff,
+                                          User.id.not_in(key_owners)).order_by(User.id)).all()
+    users = [u for u in users if not db.get(PlatformAccess, u.id)]
+    print("id\tusername\temail\tcreated")
+    for u in users:
+        print(f"{u.id}\t{u.username}\t{u.email}\t{u.created_at:%Y-%m-%d %H:%M}")
+    if not confirmed:
+        print(f"Dry run: {len(users)} unverified account(s) with no keys older than {hours:g}h would be deleted. "
+              "Rerun with --yes.")
+        return 0
+    ids = [u.id for u in users]
+    for model in (EmailToken, CartRequestLog, WalmartCredential, PlatformAccess, UserLimits, UsageMonthly, ApiKey):
+        db.execute(delete(model).where(model.user_id.in_(ids)))  # SQLite doesn't enforce ON DELETE CASCADE
+    db.execute(delete(User).where(User.id.in_(ids)))
+    db.commit()
+    print(f"Deleted {len(ids)} account(s)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="app.admin")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -123,6 +149,9 @@ def main(argv: list[str] | None = None) -> int:
     du.add_argument("username")
     du.add_argument("--yes", action="store_true", help="required; there is no undo")
     du.add_argument("--force", action="store_true", help="also delete an account that owns a platform grant or active key")
+    pu = sub.add_parser("prune-unverified")
+    pu.add_argument("--older-than-hours", type=float, required=True)
+    pu.add_argument("--yes", action="store_true", help="actually delete (default is a dry run)")
     pw = sub.add_parser("passwd")
     pw.add_argument("username")
     a = ap.parse_args(argv)
@@ -147,6 +176,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if a.cmd == "verify":
             return _verify(db, a.who)
+        if a.cmd == "prune-unverified":
+            return _prune_unverified(db, a.older_than_hours, a.yes)
         if a.cmd == "move-key":
             return _move_key(db, a.prefix, a.username, a.force)
         user = db.scalar(select(User).where(User.username == a.username))

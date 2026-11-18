@@ -10,7 +10,7 @@ from app import emailer
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import EmailToken, User, utcnow
-from conftest import confirm_verify, csrf
+from conftest import ab, confirm_verify, csrf
 
 KEY = "re_test_SECRET_do_not_log"
 PW = "s3cret-pass"
@@ -41,7 +41,7 @@ def token_from(req: httpx.Request, path: str) -> str:
 def signup(client, name="dora", verify=False, sent=None):
     page = client.get("/signup").text
     r = client.post("/signup", data=dict(username=name, email=f"{name}@example.com", password=PW,
-                                         password2=PW, csrf=csrf(page)))
+                                         password2=PW, csrf=csrf(page), **ab(page)))
     assert r.status_code == 200, r.text
     return r
 

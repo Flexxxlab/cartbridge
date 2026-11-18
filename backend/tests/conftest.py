@@ -4,7 +4,7 @@ from pathlib import Path
 DB = Path(__file__).parent / "test.db"
 if DB.exists():
     DB.unlink()
-os.environ.update(DATABASE_URL=f"sqlite:///{DB}", WALMART_PROVIDER="mock", SMTP_HOST="", BASE_URL="http://testserver")
+os.environ.update(DATABASE_URL=f"sqlite:///{DB}", WALMART_PROVIDER="mock", SMTP_HOST="", BASE_URL="http://testserver", SIGNUP_MIN_SECONDS="0")
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pytest
@@ -25,6 +25,11 @@ def csrf(html: str) -> str:
     return re.search(r'name="csrf" value="([^"]+)"', html).group(1)
 
 
+def ab(html: str) -> dict:
+    """Anti-bot form fields (signed timestamp) from a rendered /signup page."""
+    return {"ts": re.search(r'name="ts" value="([^"]+)"', html).group(1)}
+
+
 def confirm_verify(client, token: str):
     """GET shows a confirm page (token untouched); the POST button uses the token up."""
     page = client.get(f"/verify?token={token}")
@@ -38,7 +43,7 @@ def make_user(client):
     def _make(username="alice", verify=True):
         page = client.get("/signup").text
         r = client.post("/signup", data=dict(username=username, email=f"{username}@example.com",
-                                             password="s3cret-pass", password2="s3cret-pass", csrf=csrf(page)))
+                                             password="s3cret-pass", password2="s3cret-pass", csrf=csrf(page), **ab(page)))
         assert r.status_code == 200, r.text
         if verify:
             body = emailer.outbox[-1].get_content()

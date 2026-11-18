@@ -5,7 +5,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 from app.stores.walmart import sign_walmart_request
-from conftest import csrf
+from conftest import ab, csrf
 
 
 def test_signup_verify_login_and_keys(client, make_user):
@@ -26,7 +26,7 @@ def test_duplicate_username_rejected(client, make_user):
     make_user("dave")
     page = client.get("/signup").text
     r = client.post("/signup", data=dict(username="Dave", email="x@example.com", password="12345678",
-                                         password2="12345678", csrf=csrf(page)))
+                                         password2="12345678", csrf=csrf(page), **ab(page)))
     assert r.status_code == 400 and "taken" in r.text
 
 
@@ -385,7 +385,7 @@ def test_signup_shows_pending_notice_and_login_unverified_shows_it_with_resend(c
     page = client.get("/signup").text
     assert 'href="/terms"' in page and 'href="/privacy"' in page
     r = client.post("/signup", data=dict(username="fay", email="fay@example.com", password="s3cret-pass",
-                                         password2="s3cret-pass", csrf=csrf(page)))
+                                         password2="s3cret-pass", csrf=csrf(page), **ab(page)))
     assert "Check your email" in r.text and NOTICE in r.text
     page = client.get("/dashboard").text
     client.post("/logout", data={"csrf": csrf(page)})
@@ -401,11 +401,11 @@ def test_signup_throttle_429(client, monkeypatch):
     for i in range(2):
         page = client.get("/signup").text
         r = client.post("/signup", data=dict(username=f"u{i}x", email=f"u{i}@example.com",
-                                             password="s3cret-pass", password2="s3cret-pass", csrf=csrf(page)))
+                                             password="s3cret-pass", password2="s3cret-pass", csrf=csrf(page), **ab(page)))
         assert r.status_code == 200
     page = client.get("/signup").text
     r = client.post("/signup", data=dict(username="u3x", email="u3@example.com", password="s3cret-pass",
-                                         password2="s3cret-pass", csrf=csrf(page)))
+                                         password2="s3cret-pass", csrf=csrf(page), **ab(page)))
     assert r.status_code == 429 and int(r.headers["Retry-After"]) > 0
     assert "Too many sign-up attempts" in r.text and "helpdesk@flexxxlab.com" in r.text
     from app.db import SessionLocal
@@ -718,3 +718,97 @@ def test_favicons_are_served(client):
         r = client.get(url)
         assert r.status_code == 200 and r.headers["content-type"].startswith(kind), url
     assert 'href="/favicon.ico"' in client.get("/").text
+
+
+# ---------- sign-up bot defences (SEC-033) ----------
+def _signup_post(client, page, name="botx", **extra):
+    data = dict(username=name, email=f"{name}@example.com", password="s3cret-pass", password2="s3cret-pass",
+                csrf=csrf(page))
+    data.update(extra)
+    return client.post("/signup", data=data)
+
+
+def _user_count():
+    from sqlalchemy import func, select
+    from app.db import SessionLocal
+    from app.models import User
+    with SessionLocal() as db:
+        return db.scalar(select(func.count()).select_from(User))
+
+
+def test_signup_form_has_honeypot_and_signed_timestamp(client):
+    page = client.get("/signup").text
+    assert 'name="website"' in page and 'name="ts"' in page
+
+
+def test_signup_honeypot_filled_is_silently_dropped(client):
+    from app import emailer
+    page = client.get("/signup").text
+    sent = len(emailer.outbox)
+    r = _signup_post(client, page, website="http://spam.example", **ab(page))
+    assert r.status_code == 200 and "Check your email" in r.text
+    assert _user_count() == 0 and len(emailer.outbox) == sent
+
+
+def test_signup_timestamp_rules(client, monkeypatch):
+    monkeypatch.setattr(__import__("app.config", fromlist=["get_settings"]).get_settings(), "throttle_signup_max", 50)
+    import time
+    from app import antibot, emailer
+    from app.config import get_settings
+    monkeypatch.setattr(get_settings(), "signup_min_seconds", 3)
+    sent = len(emailer.outbox)
+    page = client.get("/signup").text
+    cases = {
+        "too fast": ab(page),                                                      # just rendered
+        "missing": {},
+        "tampered": {"ts": ab(page)["ts"].rsplit(".", 1)[0] + "." + "0" * 32},
+        "forged ts": {"ts": f"{int(time.time()) - 60}." + ab(page)["ts"].rsplit(".", 1)[1]},
+        "too old": {"ts": antibot.sign_timestamp(time.time() - 3 * 3600)},
+    }
+    for label, extra in cases.items():
+        r = _signup_post(client, page, name="slowx", **extra)
+        assert r.status_code == 200 and "Check your email" in r.text, label
+        assert _user_count() == 0 and len(emailer.outbox) == sent, label
+    ok = _signup_post(client, page, name="slowx", ts=antibot.sign_timestamp(time.time() - 10))
+    assert ok.status_code == 200 and _user_count() == 1
+
+
+def test_signup_disposable_domain_refused(client):
+    page = client.get("/signup").text
+    for dom in ("formtests.info", "kupibit.me", "sub.mailinator.com"):
+        r = client.post("/signup", data=dict(username="dispo", email=f"a@{dom}", password="s3cret-pass",
+                                             password2="s3cret-pass", csrf=csrf(page), **ab(page)))
+        assert r.status_code == 400 and "disposable" in r.text, dom
+    assert _user_count() == 0
+
+
+def test_prune_unverified(client, make_user, capsys):
+    from datetime import timedelta
+    from sqlalchemy import select
+    from app import admin
+    from app.db import SessionLocal
+    from app.models import ApiKey, EmailToken, User, utcnow
+    make_user("old_unv", verify=False)
+    make_user("new_unv", verify=False)
+    make_user("old_ver", verify=True)
+    make_user("old_key", verify=False)
+    with SessionLocal() as db:
+        old = utcnow() - timedelta(hours=5)
+        for n in ("old_unv", "old_ver", "old_key"):
+            db.scalar(select(User).where(User.username == n)).created_at = old
+        uid = db.scalar(select(User.id).where(User.username == "old_key"))
+        db.add(ApiKey(user_id=uid, name="k", prefix="cb_abcdefgh", key_hash="x" * 64))
+        db.commit()
+    capsys.readouterr()
+    assert admin.main(["prune-unverified", "--older-than-hours", "1"]) == 0     # dry run
+    out = capsys.readouterr().out
+    assert "old_unv" in out and "Dry run: 1" in out
+    assert "new_unv" not in out and "old_ver" not in out and "old_key" not in out
+    with SessionLocal() as db:
+        assert db.scalar(select(User).where(User.username == "old_unv"))
+    assert admin.main(["prune-unverified", "--older-than-hours", "1", "--yes"]) == 0
+    with SessionLocal() as db:
+        names = set(db.scalars(select(User.username)).all())
+        assert names == {"new_unv", "old_ver", "old_key"}
+        uid = db.scalar(select(User.id).where(User.username == "old_key"))
+        assert db.scalar(select(EmailToken).where(EmailToken.user_id == uid)) is not None

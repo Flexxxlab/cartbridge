@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     # Signs session cookies. MUST be overridden in production.
     secret_key: str = "dev-only-change-me"
     database_url: str = "sqlite:///./cartbridge.db"
+    # Sign-up forms submitted faster than this (seconds after render) are treated as bots.
+    signup_min_seconds: int = 3
 
     # SMTP. If smtp_host is empty, emails are printed to the console (dev mode).
     smtp_host: str | None = None

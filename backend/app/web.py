@@ -21,7 +21,7 @@ from .providers import walmart_source
 from .ratelimit import (MAX_COUNT, WINDOW_CHOICES, ceiling_for, chosen_for, default_chosen, describe_window,
                         limits_for, monthly_limit_for, parse_limits, plan_name_for, usage_for, describe_plan)
 from .throttle import key_for_email, retry_after, throttled, WHAT
-from . import seo, ux
+from . import antibot, seo, ux
 from .stores import WalmartAffiliateProvider
 from .stores.base import StoreError
 from .security import hash_password, new_api_key, new_csrf, sha256_hex, verify_password
@@ -130,7 +130,7 @@ def _live_token(db: Session, token: str, purpose: str) -> bool:
 def signup_form(request: Request):
     return render(request, "signup.html", indexable=True, page_title="Sign up free · CartBridge",
                   description="Create a free CartBridge account: bring your own Walmart key and add Walmart "
-                              "add-to-cart to your app with one API call.")
+                              "add-to-cart to your app with one API call.", form_ts=antibot.sign_timestamp())
 
 
 @router.post("/signup")
@@ -142,6 +142,8 @@ def signup(
     password: str = Form(""),
     password2: str = Form(""),
     csrf: str = Form(""),
+    website: str = Form(""),   # honeypot: hidden from people, bots fill it
+    ts: str = Form(""),        # signed render time
     db: Session = Depends(get_db),
 ):
     # Updated signup handling to prevent enumeration of existing emails.
@@ -161,11 +163,19 @@ def signup(
         return blocked
     check_csrf(request, csrf)
     username, email = username.strip(), email.strip().lower()
+    if antibot.looks_like_bot(website, ts):
+        # Silent drop: same page as a real sign-up, but no user and no email.
+        return render(request, "message.html", title="Check your email",
+                      message=f"We sent a verification link to {email}. "
+                              "If you already have an account, please check your email for further instructions.",
+                      notice=ux.verify_notice())
     errors = []
     if not USERNAME_RE.match(username):
         errors.append("Username must be 3–32 characters: letters, numbers, underscore.")
     if not EMAIL_RE.match(email) or len(email) > 254:
         errors.append("Enter a valid email address.")
+    elif antibot.disposable(email):
+        errors.append("Please use a permanent email address; disposable email domains aren't accepted.")
     if len(password) < 8 or len(password) > 128:
         errors.append("Password must be 8–128 characters.")
     if password != password2:
@@ -184,7 +194,8 @@ def signup(
                                    f"If you already have an account, please check your email for further instructions."),
                           notice=ux.verify_notice())
     if errors:
-        return render(request, "signup.html", 400, errors=errors, username=username, email=email)
+        return render(request, "signup.html", 400, errors=errors, username=username, email=email,
+                      form_ts=antibot.sign_timestamp())
 
     user = User(username=username, email=email, password_hash=hash_password(password))
     db.add(user)
